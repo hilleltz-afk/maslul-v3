@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+alembic
+pydantic
+pytest
+httpx
+pytest-asyncio
+anthropic
+python-dotenv
+python-levenshtein
+google-auth-oauthlib
+google-auth
+python-jose[cryptography]
