@@ -104,10 +104,10 @@ def callback(
         flow = _build_flow(state=state)
         flow.fetch_token(code=code)
         credentials = flow.credentials
-    except Exception:
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="אימות Google נכשל — קוד לא תקין או פג תוקף",
+            detail=f"אימות Google נכשל: {str(e)}",
         )
 
     # שלוף מידע על המשתמש מה-Google userinfo endpoint
