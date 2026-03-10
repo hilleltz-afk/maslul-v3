@@ -5,12 +5,13 @@ Google OAuth 2.0 authentication endpoints:
 """
 
 import os
+import secrets
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlencode
 
 import requests as http_requests
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
-from google_auth_oauthlib.flow import Flow
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
@@ -30,35 +31,10 @@ SECRET_KEY = os.getenv("SECRET_KEY", "maslul-dev-secret-change-in-production")
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_HOURS = 24
 
-GOOGLE_SCOPES = [
-    "openid",
-    "https://www.googleapis.com/auth/userinfo.email",
-    "https://www.googleapis.com/auth/userinfo.profile",
-]
-
 
 # ---------------------------------------------------------------------------
 # פונקציות עזר
 # ---------------------------------------------------------------------------
-
-def _build_flow(state: str | None = None) -> Flow:
-    """בונה Flow object של Google OAuth."""
-    client_config = {
-        "web": {
-            "client_id": GOOGLE_CLIENT_ID,
-            "client_secret": GOOGLE_CLIENT_SECRET,
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "redirect_uris": [REDIRECT_URI],
-        }
-    }
-    return Flow.from_client_config(
-        client_config,
-        scopes=GOOGLE_SCOPES,
-        redirect_uri=REDIRECT_URI,
-        state=state,
-    )
-
 
 def create_access_token(user: models.User) -> str:
     """יוצר JWT token למשתמש."""
@@ -85,25 +61,50 @@ def login():
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Google OAuth לא מוגדר בשרת. הגדר GOOGLE_CLIENT_ID ו-GOOGLE_CLIENT_SECRET ב-.env",
         )
-    flow = _build_flow()
-    auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline")
-    return RedirectResponse(url=auth_url)
+    state = secrets.token_urlsafe(16)
+    params = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": REDIRECT_URI,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "state": state,
+        "access_type": "offline",
+        "prompt": "consent",
+    }
+    auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params)
+    response = RedirectResponse(url=auth_url)
+    response.set_cookie("oauth_state", state, httponly=True, samesite="lax", max_age=300)
+    return response
 
 
 @router.get("/callback", summary="קריאה חוזרת מ-Google")
 def callback(
     code: str,
     state: str | None = None,
+    oauth_state: str | None = Cookie(default=None),
     db: Session = Depends(get_db),
 ):
     """
     Google מפנה לכאן לאחר אישור המשתמש.
     מחליף את ה-code ב-token, מזהה את המשתמש ומחזיר JWT.
     """
+    # החלפת code ב-access_token
     try:
-        flow = _build_flow(state=state)
-        flow.fetch_token(code=code)
-        credentials = flow.credentials
+        token_resp = http_requests.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "code": code,
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "redirect_uri": REDIRECT_URI,
+                "grant_type": "authorization_code",
+            },
+            timeout=10,
+        )
+        token_resp.raise_for_status()
+        access_token = token_resp.json().get("access_token")
+        if not access_token:
+            raise ValueError("לא התקבל access_token")
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -114,7 +115,7 @@ def callback(
     try:
         resp = http_requests.get(
             "https://www.googleapis.com/oauth2/v3/userinfo",
-            headers={"Authorization": f"Bearer {credentials.token}"},
+            headers={"Authorization": f"Bearer {access_token}"},
             timeout=10,
         )
         resp.raise_for_status()
