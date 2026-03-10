@@ -12,4 +12,4 @@ python-levenshtein
 google-auth-oauthlib
 google-auth
 python-jose[cryptography]
-psycopg2-binary
+psycopg2-binary>=2.9.9
