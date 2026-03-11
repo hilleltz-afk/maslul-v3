@@ -6,8 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 const navItems = [
   { href: "/dashboard", label: "דשבורד", icon: "⊞" },
   { href: "/projects", label: "פרויקטים", icon: "🏗" },
-  { href: "/tasks", label: "משימות", icon: "✓" },
-  { href: "/contacts", label: "אנשי קשר", icon: "👤" },
+  { href: "/contacts", label: "אנשי מקצוע", icon: "👤" },
   { href: "/documents", label: "מסמכים", icon: "📄" },
   { href: "/pipeline", label: "Pipeline AI", icon: "✉" },
 ];

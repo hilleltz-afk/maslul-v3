@@ -1,6 +1,8 @@
+import csv
+import io
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
@@ -70,6 +72,45 @@ def update_contact(
     db.commit()
     db.refresh(contact)
     return contact
+
+
+@router.post("/import-csv", summary="ייבוא אנשי קשר מ-CSV")
+async def import_contacts_csv(
+    tenant_id: UUID,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user_id: str | None = Depends(get_current_user_id),
+):
+    """
+    מייבא אנשי קשר מקובץ CSV.
+    עמודות נדרשות: מקצוע, שם המשרד, איש קשר, טלפון משרד, טלפון נייד, אימייל, פרטים
+    """
+    content = await file.read()
+    text = content.decode("utf-8-sig")  # תומך ב-BOM של Excel
+    reader = csv.DictReader(io.StringIO(text))
+    created = []
+    for row in reader:
+        name = row.get("איש קשר", "").strip()
+        if not name:
+            continue
+        contact = crud.create_entity(
+            db,
+            models.Contact,
+            {
+                "name": name,
+                "profession": row.get("מקצוע", "").strip() or None,
+                "office_name": row.get("שם המשרד", "").strip() or None,
+                "phone": row.get("טלפון משרד", "").strip() or None,
+                "mobile_phone": row.get("טלפון נייד", "").strip() or None,
+                "email": row.get("אימייל", "").strip() or None,
+                "notes": row.get("פרטים", "").strip() or None,
+            },
+            tenant_id=str(tenant_id),
+            created_by=user_id,
+        )
+        created.append(contact)
+    db.commit()
+    return {"imported": len(created)}
 
 
 @router.delete("/{contact_id}", status_code=status.HTTP_204_NO_CONTENT)

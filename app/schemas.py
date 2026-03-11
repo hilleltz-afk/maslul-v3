@@ -84,11 +84,13 @@ class StageCreate(BaseModel):
     project_id: UUID
     name: constr(min_length=1)
     handling_authority: constr(min_length=1)
+    color: Optional[str] = "#011e41"
 
 
 class StageUpdate(BaseModel):
     name: Optional[constr(min_length=1)] = None
     handling_authority: Optional[constr(min_length=1)] = None
+    color: Optional[str] = None
 
 
 class StageRead(BaseRead):
@@ -96,6 +98,7 @@ class StageRead(BaseRead):
     project_id: UUID
     name: str
     handling_authority: str
+    color: Optional[str] = "#011e41"
 
 
 class TaskCreate(BaseModel):
@@ -104,9 +107,12 @@ class TaskCreate(BaseModel):
     assignee_id: Optional[UUID] = None
     title: constr(min_length=1)
     description: Optional[str] = None
-    priority: constr(min_length=1)
-    status: constr(min_length=1)
+    priority: constr(min_length=1) = "medium"
+    status: constr(min_length=1) = "todo"
     blocked_by: Optional[UUID] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    custom_fields: Optional[str] = None
 
 
 class TaskUpdate(BaseModel):
@@ -118,6 +124,9 @@ class TaskUpdate(BaseModel):
     status: Optional[constr(min_length=1)] = None
     rejection_count: Optional[int] = None
     blocked_by: Optional[UUID] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    custom_fields: Optional[str] = None
 
 
 class TaskRead(BaseRead):
@@ -131,18 +140,29 @@ class TaskRead(BaseRead):
     status: str
     rejection_count: int
     blocked_by: Optional[UUID] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    custom_fields: Optional[str] = None
 
 
 class ContactCreate(BaseModel):
     name: constr(min_length=1)
     phone: Optional[str] = None
     email: Optional[str] = None
+    profession: Optional[str] = None
+    office_name: Optional[str] = None
+    mobile_phone: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class ContactUpdate(BaseModel):
     name: Optional[constr(min_length=1)] = None
     phone: Optional[str] = None
     email: Optional[str] = None
+    profession: Optional[str] = None
+    office_name: Optional[str] = None
+    mobile_phone: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class ContactRead(BaseRead):
@@ -150,6 +170,10 @@ class ContactRead(BaseRead):
     name: str
     phone: Optional[str] = None
     email: Optional[str] = None
+    profession: Optional[str] = None
+    office_name: Optional[str] = None
+    mobile_phone: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class DocumentCreate(BaseModel):
