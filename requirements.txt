@@ -14,5 +14,6 @@ google-auth
 python-jose[cryptography]
 psycopg2-binary>=2.9.9
 openpyxl>=3.1.0
+python-multipart
 requests
 resend>=2.0.0
