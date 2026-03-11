@@ -7,7 +7,7 @@ Google OAuth 2.0 authentication endpoints:
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
 
 import requests as http_requests
 from fastapi import APIRouter, Cookie, Depends, HTTPException, status
@@ -162,6 +162,13 @@ def callback(
         )
 
     token = create_access_token(user)
+
+    # אם יש FRONTEND_URL — עשה redirect לפרונטאנד עם ה-token
+    frontend_url = os.getenv("FRONTEND_URL", "")
+    if frontend_url:
+        return RedirectResponse(url=f"{frontend_url}/auth-callback?token={quote(token)}")
+
+    # fallback — החזר JSON (לפיתוח / API ישיר)
     return {
         "access_token": token,
         "token_type": "bearer",
