@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getLoginUrl } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const pending = searchParams.get("pending");
+  const rejected = searchParams.get("rejected");
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -18,7 +21,6 @@ export default function LoginPage() {
       style={{ background: "linear-gradient(135deg, #011e41 0%, #02306a 100%)" }}
     >
       <div className="bg-white rounded-2xl shadow-2xl p-12 flex flex-col items-center gap-8 w-full max-w-md">
-        {/* Logo placeholder — SVG גדול מדי, נציג שם */}
         <div className="text-center">
           <h1
             className="text-3xl font-bold tracking-wide"
@@ -32,6 +34,20 @@ export default function LoginPage() {
         </div>
 
         <div className="w-full h-px" style={{ background: "linear-gradient(90deg, #683918, #fcd562, #683918)" }} />
+
+        {pending && (
+          <div className="w-full bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-center">
+            <div className="text-yellow-700 font-medium text-sm">בקשתך התקבלה ✓</div>
+            <div className="text-yellow-600 text-xs mt-1">ממתין לאישור מנהל המערכת. תקבל גישה בקרוב.</div>
+          </div>
+        )}
+
+        {rejected && (
+          <div className="w-full bg-red-50 border border-red-200 rounded-xl p-4 text-center">
+            <div className="text-red-700 font-medium text-sm">גישה נדחתה</div>
+            <div className="text-red-600 text-xs mt-1">פנה למנהל המערכת לקבלת הרשאה.</div>
+          </div>
+        )}
 
         <div className="text-center">
           <p className="text-gray-500 text-sm mb-6">כניסה עם חשבון Google של החברה</p>

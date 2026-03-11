@@ -78,6 +78,8 @@ class User(Base):
     email = Column(String, unique=True, nullable=False)
     name = Column(String, nullable=False)
     google_id = Column(String, unique=True, nullable=True)
+    role = Column(String, nullable=False, default="member")  # admin / member
+    status = Column(String, nullable=False, default="active")  # active / pending / rejected
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at = Column(DateTime, nullable=True)
@@ -90,6 +92,8 @@ class Project(Base):
     gush = Column(String, nullable=False)
     helka = Column(String, nullable=False)
     name = Column(String, nullable=False)
+    address = Column(String, nullable=True)
+    budget_total = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at = Column(DateTime, nullable=True)
@@ -164,6 +168,41 @@ class Document(Base):
     name = Column(String, nullable=False)
     path = Column(String, nullable=False)
     expiry_date = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True)
+    created_by = Column(GUID(), ForeignKey("users.id"), nullable=True)
+
+
+BUDGET_CATEGORIES = ["מגרש", "תכנון", "היתרים", "בנייה", "תשתיות", "פיקוח", "משפטי", "שיווק", "אחר"]
+
+
+class BudgetEntry(Base):
+    """רשומת תקציב — מתוכנן או בפועל לפי פרויקט."""
+    __tablename__ = "budget_entries"
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(GUID(), ForeignKey("tenants.id"), nullable=False)
+    project_id = Column(GUID(), ForeignKey("projects.id"), nullable=False)
+    category = Column(String, nullable=False)
+    description = Column(String, nullable=False)
+    vendor = Column(String, nullable=True)
+    amount = Column(Float, nullable=False)
+    entry_date = Column(DateTime, nullable=True)
+    is_planned = Column(Integer, default=0)  # 0=בפועל, 1=מתוכנן
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True)
+    created_by = Column(GUID(), ForeignKey("users.id"), nullable=True)
+
+
+class TaskComment(Base):
+    """הערה / תגובה על משימה."""
+    __tablename__ = "task_comments"
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(GUID(), ForeignKey("tenants.id"), nullable=False)
+    task_id = Column(GUID(), ForeignKey("tasks.id"), nullable=False)
+    content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at = Column(DateTime, nullable=True)

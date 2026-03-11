@@ -1,19 +1,67 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { apiFetch } from "@/lib/api";
 
-const navItems = [
+const mainNavItems = [
   { href: "/dashboard", label: "דשבורד", icon: "⊞" },
   { href: "/projects", label: "פרויקטים", icon: "🏗" },
-  { href: "/contacts", label: "אנשי מקצוע", icon: "👤" },
-  { href: "/documents", label: "מסמכים", icon: "📄" },
   { href: "/pipeline", label: "Pipeline AI", icon: "✉" },
 ];
+
+const bottomNavItems = [
+  { href: "/documents", label: "מסמכים", icon: "📄" },
+  { href: "/contacts", label: "אנשי קשר", icon: "👤" },
+];
+
+function NavLink({ href, label, icon, pathname, badge }: {
+  href: string; label: string; icon: string; pathname: string; badge?: number;
+}) {
+  const active = pathname === href || pathname.startsWith(href + "/");
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-3 px-6 py-3 text-sm transition-colors"
+      style={{
+        color: active ? "#fcd562" : "rgba(255,255,255,0.75)",
+        background: active ? "rgba(255,255,255,0.08)" : "transparent",
+        borderRight: active ? "3px solid #fcd562" : "3px solid transparent",
+      }}
+    >
+      <span className="text-base">{icon}</span>
+      {label}
+      {badge && badge > 0 ? (
+        <span
+          className="mr-auto text-xs font-bold px-1.5 py-0.5 rounded-full"
+          style={{ background: "#fcd562", color: "#011e41" }}
+        >
+          {badge}
+        </span>
+      ) : null}
+    </Link>
+  );
+}
 
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    apiFetch("/auth/me").then((me: any) => {
+      if (me?.role === "admin" || me?.role === "super_admin") {
+        setIsAdmin(true);
+        apiFetch(`/tenants/${me.tenant_id}/users/`).then((users: any[]) => {
+          setPendingCount(users.filter((u: any) => u.status === "pending").length);
+        }).catch(() => {});
+      }
+    }).catch(() => {});
+  }, []);
 
   function logout() {
     localStorage.removeItem("token");
@@ -31,27 +79,29 @@ export default function Sidebar() {
         <div className="text-xs mt-0.5" style={{ color: "#fcd562" }}>מסלול</div>
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 py-4 overflow-y-auto">
-        {navItems.map((item) => {
-          const active = pathname === item.href || pathname.startsWith(item.href + "/");
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="flex items-center gap-3 px-6 py-3 text-sm transition-colors"
-              style={{
-                color: active ? "#fcd562" : "rgba(255,255,255,0.75)",
-                background: active ? "rgba(255,255,255,0.08)" : "transparent",
-                borderRight: active ? "3px solid #fcd562" : "3px solid transparent",
-              }}
-            >
-              <span className="text-base">{item.icon}</span>
-              {item.label}
-            </Link>
-          );
-        })}
+      {/* Main nav */}
+      <nav className="flex-1 py-4">
+        {mainNavItems.map(item => (
+          <NavLink key={item.href} {...item} pathname={pathname} />
+        ))}
       </nav>
+
+      {/* Bottom nav — ניהולי */}
+      <div className="border-t border-white/10 py-2">
+        {bottomNavItems.map(item => (
+          <NavLink key={item.href} {...item} pathname={pathname} />
+        ))}
+
+        {isAdmin && (
+          <NavLink
+            href="/settings"
+            label="הגדרות"
+            icon="⚙"
+            pathname={pathname}
+            badge={pendingCount}
+          />
+        )}
+      </div>
 
       {/* Logout */}
       <div className="px-6 py-4 border-t border-white/10">

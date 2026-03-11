@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from . import ai, auth, contacts, documents, pipeline, projects, project_aliases, stages, tasks, tenants, users
+from . import ai, auth, budget, comments, contacts, documents, pipeline, projects, project_aliases, stages, tasks, tenants, users
 
 api_router = APIRouter()
 
@@ -15,3 +15,5 @@ api_router.include_router(contacts.router)
 api_router.include_router(documents.router)
 api_router.include_router(ai.router)
 api_router.include_router(pipeline.router)
+api_router.include_router(budget.router)
+api_router.include_router(comments.router)

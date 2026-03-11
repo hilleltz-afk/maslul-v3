@@ -33,29 +33,45 @@ class TenantRead(BaseRead):
 class UserCreate(BaseModel):
     email: constr(min_length=1)
     name: constr(min_length=1)
+    role: Optional[str] = "member"
+    status: Optional[str] = "active"
 
 
 class UserUpdate(BaseModel):
     email: Optional[constr(min_length=1)] = None
     name: Optional[constr(min_length=1)] = None
+    role: Optional[str] = None
+    status: Optional[str] = None
 
 
 class UserRead(BaseRead):
     tenant_id: UUID
     email: str
     name: str
+    role: str = "member"
+    status: str = "active"
+
+
+class UserInvite(BaseModel):
+    email: constr(min_length=1)
+    name: constr(min_length=1)
+    role: Optional[str] = "member"
 
 
 class ProjectCreate(BaseModel):
     gush: constr(min_length=1)
     helka: constr(min_length=1)
     name: constr(min_length=1)
+    address: Optional[str] = None
+    budget_total: Optional[float] = None
 
 
 class ProjectUpdate(BaseModel):
     gush: Optional[constr(min_length=1)] = None
     helka: Optional[constr(min_length=1)] = None
     name: Optional[constr(min_length=1)] = None
+    address: Optional[str] = None
+    budget_total: Optional[float] = None
 
 
 class ProjectRead(BaseRead):
@@ -63,6 +79,8 @@ class ProjectRead(BaseRead):
     gush: str
     helka: str
     name: str
+    address: Optional[str] = None
+    budget_total: Optional[float] = None
 
 
 class ProjectAliasCreate(BaseModel):
@@ -256,3 +274,66 @@ class EmailApproveRequest(BaseModel):
     task_title: constr(min_length=1)
     priority: constr(min_length=1)
     assignee_id: Optional[UUID] = None
+
+
+# ---------------------------------------------------------------------------
+# Budget schemas
+# ---------------------------------------------------------------------------
+
+class BudgetEntryCreate(BaseModel):
+    category: constr(min_length=1)
+    description: constr(min_length=1)
+    vendor: Optional[str] = None
+    amount: float
+    entry_date: Optional[datetime] = None
+    is_planned: int = 0
+    notes: Optional[str] = None
+
+
+class BudgetEntryUpdate(BaseModel):
+    category: Optional[str] = None
+    description: Optional[str] = None
+    vendor: Optional[str] = None
+    amount: Optional[float] = None
+    entry_date: Optional[datetime] = None
+    is_planned: Optional[int] = None
+    notes: Optional[str] = None
+
+
+class BudgetEntryRead(BaseRead):
+    tenant_id: UUID
+    project_id: UUID
+    category: str
+    description: str
+    vendor: Optional[str] = None
+    amount: float
+    entry_date: Optional[datetime] = None
+    is_planned: int = 0
+    notes: Optional[str] = None
+
+
+class BudgetSummaryRow(BaseModel):
+    category: str
+    planned: float
+    actual: float
+    diff: float
+
+    model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Task comment schemas
+# ---------------------------------------------------------------------------
+
+class TaskCommentCreate(BaseModel):
+    content: constr(min_length=1)
+
+
+class TaskCommentRead(BaseModel):
+    id: UUID
+    task_id: UUID
+    content: str
+    created_at: datetime
+    created_by: Optional[UUID] = None
+
+    model_config = {"from_attributes": True}

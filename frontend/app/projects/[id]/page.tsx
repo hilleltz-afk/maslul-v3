@@ -7,34 +7,41 @@ import { apiFetch } from "@/lib/api";
 const TENANT_ID = "f7d67cb1-3414-47a4-8ddb-2845d11d32ff";
 
 const STATUS_OPTIONS = [
-  { value: "todo",        label: "לביצוע",      bg: "#e0e0e0", text: "#555" },
-  { value: "in_progress", label: "בעבודה",      bg: "#2980b9", text: "#fff" },
-  { value: "done",        label: "הושלם",       bg: "#27ae60", text: "#fff" },
-  { value: "blocked",     label: "חסום",        bg: "#c0392b", text: "#fff" },
-  { value: "review",      label: "לבדיקה",      bg: "#8e44ad", text: "#fff" },
+  { value: "todo",        label: "לביצוע",  bg: "#e0e0e0", text: "#555" },
+  { value: "in_progress", label: "בעבודה",  bg: "#2980b9", text: "#fff" },
+  { value: "done",        label: "הושלם",   bg: "#27ae60", text: "#fff" },
+  { value: "blocked",     label: "חסום",    bg: "#c0392b", text: "#fff" },
+  { value: "review",      label: "לבדיקה",  bg: "#8e44ad", text: "#fff" },
 ];
 
 const PRIORITY_OPTIONS = [
-  { value: "high",   label: "גבוהה", color: "#c0392b" },
+  { value: "high",   label: "גבוהה",   color: "#c0392b" },
   { value: "medium", label: "בינונית", color: "#e67e22" },
-  { value: "low",    label: "נמוכה",  color: "#27ae60" },
+  { value: "low",    label: "נמוכה",   color: "#27ae60" },
 ];
+
+const BUDGET_CATEGORIES = ["מגרש","תכנון","היתרים","בנייה","תשתיות","פיקוח","משפטי","שיווק","אחר"];
 
 const GROUP_COLORS = ["#e74c3c","#e67e22","#f1c40f","#2ecc71","#1abc9c","#3498db","#9b59b6","#011e41"];
 
 interface Task { id: string; title: string; status: string; priority: string; description?: string; assignee_id?: string; start_date?: string; end_date?: string; stage_id: string; }
 interface Stage { id: string; name: string; color: string; handling_authority: string; }
 interface User { id: string; name: string; email: string; }
-interface Project { id: string; name: string; gush: string; helka: string; }
+interface Project { id: string; name: string; gush: string; helka: string; budget_total?: number; address?: string; }
+interface BudgetEntry { id: string; category: string; description: string; vendor?: string; amount: number; entry_date?: string; is_planned: number; notes?: string; }
+interface BudgetSummary { category: string; planned: number; actual: number; diff: number; }
+interface Comment { id: string; content: string; created_at: string; created_by?: string; }
 
-// Default column widths
 const DEFAULT_WIDTHS: Record<string, number> = { title: 300, assignee: 130, status: 140, priority: 110, start_date: 120, end_date: 120, notes: 200 };
+
+type Tab = "tasks" | "budget" | "comments";
 
 export default function ProjectPage() {
   const router = useRouter();
   const params = useParams();
   const projectId = params.id as string;
 
+  const [tab, setTab] = useState<Tab>("tasks");
   const [project, setProject] = useState<Project | null>(null);
   const [stages, setStages] = useState<Stage[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -50,6 +57,18 @@ export default function ProjectPage() {
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const dragCol = useRef<{ col: string; startX: number; startW: number } | null>(null);
 
+  // Budget state
+  const [budgetEntries, setBudgetEntries] = useState<BudgetEntry[]>([]);
+  const [budgetSummary, setBudgetSummary] = useState<BudgetSummary[]>([]);
+  const [showAddEntry, setShowAddEntry] = useState(false);
+  const [newEntry, setNewEntry] = useState({ category: "בנייה", description: "", vendor: "", amount: "", is_planned: "0", notes: "" });
+
+  // Comments state
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [newComment, setNewComment] = useState("");
+  const commentsEndRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (!localStorage.getItem("token")) { router.replace("/login"); return; }
     Promise.all([
@@ -64,6 +83,32 @@ export default function ProjectPage() {
       setUsers(usrs);
     }).catch(console.error);
   }, [projectId, router]);
+
+  useEffect(() => {
+    if (tab === "budget") loadBudget();
+  }, [tab]);
+
+  useEffect(() => {
+    if (selectedTaskId) loadComments(selectedTaskId);
+  }, [selectedTaskId]);
+
+  useEffect(() => {
+    commentsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [comments]);
+
+  async function loadBudget() {
+    const [entries, summary] = await Promise.all([
+      apiFetch(`/tenants/${TENANT_ID}/projects/${projectId}/budget/`).catch(() => []),
+      apiFetch(`/tenants/${TENANT_ID}/projects/${projectId}/budget/summary`).catch(() => []),
+    ]);
+    setBudgetEntries(entries);
+    setBudgetSummary(summary);
+  }
+
+  async function loadComments(taskId: string) {
+    const data = await apiFetch(`/tenants/${TENANT_ID}/tasks/${taskId}/comments/`).catch(() => []);
+    setComments(data);
+  }
 
   function saveWidths(w: Record<string, number>) {
     setColWidths(w);
@@ -99,10 +144,44 @@ export default function ProjectPage() {
     setAddingToStage(null);
   }
 
+  async function addBudgetEntry() {
+    if (!newEntry.description.trim() || !newEntry.amount) return;
+    const entry = await apiFetch(`/tenants/${TENANT_ID}/projects/${projectId}/budget/`, {
+      method: "POST",
+      body: JSON.stringify({ ...newEntry, amount: parseFloat(newEntry.amount), is_planned: parseInt(newEntry.is_planned) }),
+    });
+    setBudgetEntries(prev => [...prev, entry]);
+    setNewEntry({ category: "בנייה", description: "", vendor: "", amount: "", is_planned: "0", notes: "" });
+    setShowAddEntry(false);
+    loadBudget();
+  }
+
+  async function deleteBudgetEntry(id: string) {
+    await apiFetch(`/tenants/${TENANT_ID}/projects/${projectId}/budget/${id}`, { method: "DELETE" });
+    setBudgetEntries(prev => prev.filter(e => e.id !== id));
+    loadBudget();
+  }
+
+  async function sendComment() {
+    if (!newComment.trim() || !selectedTaskId) return;
+    const comment = await apiFetch(`/tenants/${TENANT_ID}/tasks/${selectedTaskId}/comments/`, {
+      method: "POST",
+      body: JSON.stringify({ content: newComment }),
+    });
+    setComments(prev => [...prev, comment]);
+    setNewComment("");
+  }
+
   function getW(col: string) { return colWidths[col] ?? DEFAULT_WIDTHS[col] ?? 120; }
   function getUser(id?: string) { return users.find(u => u.id === id); }
   function getStatus(val: string) { return STATUS_OPTIONS.find(s => s.value === val) || STATUS_OPTIONS[0]; }
   function getPriority(val: string) { return PRIORITY_OPTIONS.find(p => p.value === val) || PRIORITY_OPTIONS[1]; }
+  function fmt(n: number) { return n.toLocaleString("he-IL", { style: "currency", currency: "ILS", maximumFractionDigits: 0 }); }
+
+  const totalPlanned = budgetSummary.reduce((s, r) => s + r.planned, 0);
+  const totalActual = budgetSummary.reduce((s, r) => s + r.actual, 0);
+  const budgetTotal = project?.budget_total || totalPlanned || 1;
+  const pct = Math.min(100, Math.round((totalActual / budgetTotal) * 100));
 
   const columns = [
     { key: "title", label: "משימה" },
@@ -116,193 +195,434 @@ export default function ProjectPage() {
 
   if (!project) return <div className="p-8 text-gray-400">טוען...</div>;
 
+  const selectedTask = tasks.find(t => t.id === selectedTaskId);
+
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
+    <div className="flex flex-col h-screen overflow-hidden" dir="rtl">
       {/* Header */}
-      <div className="px-8 py-4 bg-white border-b border-gray-200 flex items-center gap-3">
-        <button onClick={() => router.push("/projects")} className="text-gray-400 hover:text-gray-600 text-sm">← פרויקטים</button>
+      <div className="px-8 py-4 bg-white border-b border-gray-200 flex items-center gap-3 flex-shrink-0">
+        <button onClick={() => router.push("/projects")} className="text-gray-400 hover:text-gray-600 text-sm">→ פרויקטים</button>
         <span className="text-gray-300">/</span>
         <h1 className="text-xl font-bold" style={{ color: "#011e41" }}>{project.name}</h1>
         <span className="text-xs text-gray-400 mr-auto">גוש {project.gush} חלקה {project.helka}</span>
       </div>
 
-      {/* Table */}
-      <div className="flex-1 overflow-auto px-4 py-4">
-        {stages.map((stage) => {
-          const stageTasks = tasks.filter(t => t.stage_id === stage.id);
-          const isCollapsed = collapsed[stage.id];
-          return (
-            <div key={stage.id} className="mb-6">
-              {/* Group header */}
-              <div className="flex items-center gap-2 mb-1 cursor-pointer select-none" onClick={() => setCollapsed(p => ({ ...p, [stage.id]: !p[stage.id] }))}>
-                <div className="w-1 h-5 rounded-full flex-shrink-0" style={{ background: stage.color || "#011e41" }} />
-                <span className="font-semibold text-sm" style={{ color: stage.color || "#011e41" }}>{stage.name}</span>
-                <span className="text-xs text-gray-400">({stageTasks.length})</span>
-                <span className="text-xs text-gray-400 mr-auto">{isCollapsed ? "▶" : "▼"}</span>
-              </div>
-
-              {!isCollapsed && (
-                <div className="rounded-lg overflow-hidden border border-gray-200 bg-white">
-                  {/* Column headers */}
-                  <div className="flex bg-gray-50 border-b border-gray-200 text-xs text-gray-500 font-medium select-none">
-                    <div style={{ width: 32, minWidth: 32 }} />
-                    {columns.map((col) => (
-                      <div key={col.key} className="relative flex items-center px-3 py-2 border-r border-gray-200" style={{ width: getW(col.key), minWidth: getW(col.key) }}>
-                        {col.label}
-                        <div
-                          className="absolute left-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-300 opacity-0 hover:opacity-100"
-                          onMouseDown={(e) => startResize(col.key, e)}
-                        />
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Rows */}
-                  {stageTasks.map((task) => {
-                    const status = getStatus(task.status);
-                    const priority = getPriority(task.priority);
-                    const assignee = getUser(task.assignee_id);
-                    return (
-                      <div key={task.id} className="flex items-center border-b border-gray-100 hover:bg-gray-50 group text-sm">
-                        <div style={{ width: 32, minWidth: 32 }} className="flex items-center justify-center">
-                          <div className="w-2 h-2 rounded-full" style={{ background: stage.color || "#011e41" }} />
-                        </div>
-
-                        {/* Title */}
-                        <div className="flex items-center px-2 py-1.5 border-r border-gray-100" style={{ width: getW("title"), minWidth: getW("title") }}>
-                          {editingTask === task.id + "_title" ? (
-                            <input
-                              autoFocus
-                              defaultValue={task.title}
-                              className="w-full text-sm outline-none border-b border-blue-400"
-                              onBlur={e => { updateTask(task.id, { title: e.target.value }); setEditingTask(null); }}
-                              onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                            />
-                          ) : (
-                            <span className="truncate cursor-pointer hover:text-blue-600" onClick={() => setEditingTask(task.id + "_title")}>{task.title}</span>
-                          )}
-                        </div>
-
-                        {/* Assignee */}
-                        <div className="px-2 py-1.5 border-r border-gray-100" style={{ width: getW("assignee"), minWidth: getW("assignee") }}>
-                          <select
-                            value={task.assignee_id || ""}
-                            onChange={e => updateTask(task.id, { assignee_id: e.target.value || undefined })}
-                            className="w-full text-xs bg-transparent outline-none cursor-pointer"
-                          >
-                            <option value="">—</option>
-                            {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                          </select>
-                        </div>
-
-                        {/* Status */}
-                        <div className="px-2 py-1.5 border-r border-gray-100" style={{ width: getW("status"), minWidth: getW("status") }}>
-                          <select
-                            value={task.status}
-                            onChange={e => updateTask(task.id, { status: e.target.value })}
-                            className="w-full text-xs font-medium rounded px-1 py-0.5 outline-none cursor-pointer"
-                            style={{ background: status.bg, color: status.text }}
-                          >
-                            {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                          </select>
-                        </div>
-
-                        {/* Priority */}
-                        <div className="px-2 py-1.5 border-r border-gray-100" style={{ width: getW("priority"), minWidth: getW("priority") }}>
-                          <select
-                            value={task.priority}
-                            onChange={e => updateTask(task.id, { priority: e.target.value })}
-                            className="w-full text-xs outline-none cursor-pointer bg-transparent font-medium"
-                            style={{ color: priority.color }}
-                          >
-                            {PRIORITY_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-                          </select>
-                        </div>
-
-                        {/* Start date */}
-                        <div className="px-2 py-1.5 border-r border-gray-100" style={{ width: getW("start_date"), minWidth: getW("start_date") }}>
-                          <input
-                            type="date"
-                            value={task.start_date ? task.start_date.slice(0, 10) : ""}
-                            onChange={e => updateTask(task.id, { start_date: e.target.value || undefined })}
-                            className="w-full text-xs bg-transparent outline-none cursor-pointer"
-                          />
-                        </div>
-
-                        {/* End date */}
-                        <div className="px-2 py-1.5 border-r border-gray-100" style={{ width: getW("end_date"), minWidth: getW("end_date") }}>
-                          <input
-                            type="date"
-                            value={task.end_date ? task.end_date.slice(0, 10) : ""}
-                            onChange={e => updateTask(task.id, { end_date: e.target.value || undefined })}
-                            className="w-full text-xs bg-transparent outline-none cursor-pointer"
-                          />
-                        </div>
-
-                        {/* Notes */}
-                        <div className="px-2 py-1.5" style={{ width: getW("notes"), minWidth: getW("notes") }}>
-                          {editingTask === task.id + "_notes" ? (
-                            <input
-                              autoFocus
-                              defaultValue={task.description || ""}
-                              className="w-full text-xs outline-none border-b border-blue-400"
-                              onBlur={e => { updateTask(task.id, { description: e.target.value }); setEditingTask(null); }}
-                            />
-                          ) : (
-                            <span className="text-xs text-gray-400 truncate cursor-pointer hover:text-gray-600 block" onClick={() => setEditingTask(task.id + "_notes")}>
-                              {task.description || "הוסף הערה..."}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {/* Add item */}
-                  {addingToStage === stage.id ? (
-                    <div className="flex items-center px-8 py-2 gap-2">
-                      <input
-                        autoFocus
-                        value={newTaskTitle}
-                        onChange={e => setNewTaskTitle(e.target.value)}
-                        onKeyDown={e => { if (e.key === "Enter") addTask(stage.id); if (e.key === "Escape") { setAddingToStage(null); setNewTaskTitle(""); } }}
-                        placeholder="שם המשימה..."
-                        className="flex-1 text-sm outline-none border-b border-blue-400 py-0.5"
-                      />
-                      <button onClick={() => addTask(stage.id)} className="text-xs px-3 py-1 rounded text-white" style={{ background: "#011e41" }}>הוסף</button>
-                      <button onClick={() => { setAddingToStage(null); setNewTaskTitle(""); }} className="text-xs text-gray-400 hover:text-gray-600">ביטול</button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setAddingToStage(stage.id)}
-                      className="flex items-center gap-2 px-8 py-2 text-xs text-gray-400 hover:text-gray-600 hover:bg-gray-50 w-full"
-                    >
-                      <span>+</span> הוסף משימה
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-
-        {/* Add group */}
-        <button
-          onClick={async () => {
-            const name = prompt("שם הקבוצה:");
-            if (!name) return;
-            const color = GROUP_COLORS[stages.length % GROUP_COLORS.length];
-            const stage = await apiFetch(`/tenants/${TENANT_ID}/stages/`, {
-              method: "POST",
-              body: JSON.stringify({ project_id: projectId, name, handling_authority: "—", color }),
-            });
-            setStages(prev => [...prev, stage]);
-          }}
-          className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-600 px-2 py-2"
-        >
-          <span>+</span> הוסף קבוצה
-        </button>
+      {/* Tabs */}
+      <div className="flex gap-0 border-b border-gray-200 bg-white px-8 flex-shrink-0">
+        {[
+          { id: "tasks" as Tab, label: "משימות" },
+          { id: "budget" as Tab, label: "תקציב" },
+          { id: "comments" as Tab, label: "הערות" },
+        ].map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${tab === t.id ? "border-[#011e41] text-[#011e41]" : "border-transparent text-gray-400 hover:text-gray-600"}`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
+
+      {/* Tab: Tasks */}
+      {tab === "tasks" && (
+        <div className="flex-1 overflow-auto px-4 py-4">
+          {stages.map((stage) => {
+            const stageTasks = tasks.filter(t => t.stage_id === stage.id);
+            const isCollapsed = collapsed[stage.id];
+            return (
+              <div key={stage.id} className="mb-6">
+                <div className="flex items-center gap-2 mb-1 cursor-pointer select-none" onClick={() => setCollapsed(p => ({ ...p, [stage.id]: !p[stage.id] }))}>
+                  <div className="w-1 h-5 rounded-full flex-shrink-0" style={{ background: stage.color || "#011e41" }} />
+                  <span className="font-semibold text-sm" style={{ color: stage.color || "#011e41" }}>{stage.name}</span>
+                  <span className="text-xs text-gray-400">({stageTasks.length})</span>
+                  <span className="text-xs text-gray-400 mr-auto">{isCollapsed ? "◀" : "▼"}</span>
+                </div>
+
+                {!isCollapsed && (
+                  <div className="rounded-lg overflow-hidden border border-gray-200 bg-white">
+                    <div className="flex bg-gray-50 border-b border-gray-200 text-xs text-gray-500 font-medium select-none">
+                      <div style={{ width: 32, minWidth: 32 }} />
+                      {columns.map((col) => (
+                        <div key={col.key} className="relative flex items-center px-3 py-2 border-r border-gray-200" style={{ width: getW(col.key), minWidth: getW(col.key) }}>
+                          {col.label}
+                          <div
+                            className="absolute left-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-300 opacity-0 hover:opacity-100"
+                            onMouseDown={(e) => startResize(col.key, e)}
+                          />
+                        </div>
+                      ))}
+                      <div className="px-2 py-2 text-xs text-gray-400 w-10">💬</div>
+                    </div>
+
+                    {stageTasks.map((task) => {
+                      const status = getStatus(task.status);
+                      const priority = getPriority(task.priority);
+                      return (
+                        <div key={task.id} className="flex items-center border-b border-gray-100 hover:bg-gray-50 group text-sm">
+                          <div style={{ width: 32, minWidth: 32 }} className="flex items-center justify-center">
+                            <div className="w-2 h-2 rounded-full" style={{ background: stage.color || "#011e41" }} />
+                          </div>
+
+                          {/* Title */}
+                          <div className="flex items-center px-2 py-1.5 border-r border-gray-100" style={{ width: getW("title"), minWidth: getW("title") }}>
+                            {editingTask === task.id + "_title" ? (
+                              <input
+                                autoFocus
+                                defaultValue={task.title}
+                                className="w-full text-sm outline-none border-b border-blue-400"
+                                onBlur={e => { updateTask(task.id, { title: e.target.value }); setEditingTask(null); }}
+                                onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                              />
+                            ) : (
+                              <span className="truncate cursor-pointer hover:text-blue-600" onClick={() => setEditingTask(task.id + "_title")}>{task.title}</span>
+                            )}
+                          </div>
+
+                          {/* Assignee */}
+                          <div className="px-2 py-1.5 border-r border-gray-100" style={{ width: getW("assignee"), minWidth: getW("assignee") }}>
+                            <select
+                              value={task.assignee_id || ""}
+                              onChange={e => updateTask(task.id, { assignee_id: e.target.value || undefined })}
+                              className="w-full text-xs bg-transparent outline-none cursor-pointer"
+                            >
+                              <option value="">—</option>
+                              {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                            </select>
+                          </div>
+
+                          {/* Status */}
+                          <div className="px-2 py-1.5 border-r border-gray-100" style={{ width: getW("status"), minWidth: getW("status") }}>
+                            <select
+                              value={task.status}
+                              onChange={e => updateTask(task.id, { status: e.target.value })}
+                              className="w-full text-xs font-medium rounded px-1 py-0.5 outline-none cursor-pointer"
+                              style={{ background: status.bg, color: status.text }}
+                            >
+                              {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                            </select>
+                          </div>
+
+                          {/* Priority */}
+                          <div className="px-2 py-1.5 border-r border-gray-100" style={{ width: getW("priority"), minWidth: getW("priority") }}>
+                            <select
+                              value={task.priority}
+                              onChange={e => updateTask(task.id, { priority: e.target.value })}
+                              className="w-full text-xs outline-none cursor-pointer bg-transparent font-medium"
+                              style={{ color: priority.color }}
+                            >
+                              {PRIORITY_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                            </select>
+                          </div>
+
+                          {/* Start date */}
+                          <div className="px-2 py-1.5 border-r border-gray-100" style={{ width: getW("start_date"), minWidth: getW("start_date") }}>
+                            <input
+                              type="date"
+                              value={task.start_date ? task.start_date.slice(0, 10) : ""}
+                              onChange={e => updateTask(task.id, { start_date: e.target.value || undefined })}
+                              className="w-full text-xs bg-transparent outline-none cursor-pointer"
+                            />
+                          </div>
+
+                          {/* End date */}
+                          <div className="px-2 py-1.5 border-r border-gray-100" style={{ width: getW("end_date"), minWidth: getW("end_date") }}>
+                            <input
+                              type="date"
+                              value={task.end_date ? task.end_date.slice(0, 10) : ""}
+                              onChange={e => updateTask(task.id, { end_date: e.target.value || undefined })}
+                              className="w-full text-xs bg-transparent outline-none cursor-pointer"
+                            />
+                          </div>
+
+                          {/* Notes */}
+                          <div className="px-2 py-1.5 border-r border-gray-100" style={{ width: getW("notes"), minWidth: getW("notes") }}>
+                            {editingTask === task.id + "_notes" ? (
+                              <input
+                                autoFocus
+                                defaultValue={task.description || ""}
+                                className="w-full text-xs outline-none border-b border-blue-400"
+                                onBlur={e => { updateTask(task.id, { description: e.target.value }); setEditingTask(null); }}
+                              />
+                            ) : (
+                              <span className="text-xs text-gray-400 truncate cursor-pointer hover:text-gray-600 block" onClick={() => setEditingTask(task.id + "_notes")}>
+                                {task.description || "הוסף הערה..."}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Comments icon */}
+                          <div className="px-2 py-1.5 w-10 flex items-center justify-center">
+                            <button
+                              onClick={() => { setSelectedTaskId(task.id); setTab("comments"); }}
+                              className="text-gray-300 hover:text-blue-500 text-base"
+                              title="הערות"
+                            >
+                              💬
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {addingToStage === stage.id ? (
+                      <div className="flex items-center px-8 py-2 gap-2">
+                        <input
+                          autoFocus
+                          value={newTaskTitle}
+                          onChange={e => setNewTaskTitle(e.target.value)}
+                          onKeyDown={e => { if (e.key === "Enter") addTask(stage.id); if (e.key === "Escape") { setAddingToStage(null); setNewTaskTitle(""); } }}
+                          placeholder="שם המשימה..."
+                          className="flex-1 text-sm outline-none border-b border-blue-400 py-0.5"
+                        />
+                        <button onClick={() => addTask(stage.id)} className="text-xs px-3 py-1 rounded text-white" style={{ background: "#011e41" }}>הוסף</button>
+                        <button onClick={() => { setAddingToStage(null); setNewTaskTitle(""); }} className="text-xs text-gray-400 hover:text-gray-600">ביטול</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setAddingToStage(stage.id)}
+                        className="flex items-center gap-2 px-8 py-2 text-xs text-gray-400 hover:text-gray-600 hover:bg-gray-50 w-full"
+                      >
+                        <span>+</span> הוסף משימה
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          <button
+            onClick={async () => {
+              const name = prompt("שם הקבוצה:");
+              if (!name) return;
+              const color = GROUP_COLORS[stages.length % GROUP_COLORS.length];
+              const stage = await apiFetch(`/tenants/${TENANT_ID}/stages/`, {
+                method: "POST",
+                body: JSON.stringify({ project_id: projectId, name, handling_authority: "—", color }),
+              });
+              setStages(prev => [...prev, stage]);
+            }}
+            className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-600 px-2 py-2"
+          >
+            <span>+</span> הוסף קבוצה
+          </button>
+        </div>
+      )}
+
+      {/* Tab: Budget */}
+      {tab === "budget" && (
+        <div className="flex-1 overflow-auto px-6 py-5">
+          {/* Summary cards */}
+          <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="bg-white rounded-xl p-5 border border-gray-200">
+              <div className="text-xs text-gray-400 mb-1">תקציב כולל</div>
+              <div className="text-2xl font-bold" style={{ color: "#011e41" }}>{fmt(budgetTotal)}</div>
+            </div>
+            <div className="bg-white rounded-xl p-5 border border-gray-200">
+              <div className="text-xs text-gray-400 mb-1">בפועל</div>
+              <div className="text-2xl font-bold" style={{ color: totalActual > budgetTotal ? "#c0392b" : "#27ae60" }}>{fmt(totalActual)}</div>
+            </div>
+            <div className="bg-white rounded-xl p-5 border border-gray-200">
+              <div className="text-xs text-gray-400 mb-1">יתרה</div>
+              <div className="text-2xl font-bold" style={{ color: budgetTotal - totalActual < 0 ? "#c0392b" : "#011e41" }}>{fmt(budgetTotal - totalActual)}</div>
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          <div className="bg-white rounded-xl p-5 border border-gray-200 mb-6">
+            <div className="flex justify-between text-xs text-gray-500 mb-2">
+              <span>ניצול תקציב</span>
+              <span>{pct}%</span>
+            </div>
+            <div className="w-full h-3 rounded-full bg-gray-100 overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all"
+                style={{ width: `${pct}%`, background: pct > 90 ? "#c0392b" : pct > 70 ? "#e67e22" : "#27ae60" }}
+              />
+            </div>
+          </div>
+
+          {/* Category breakdown */}
+          {budgetSummary.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 mb-6 overflow-hidden">
+              <div className="px-5 py-3 border-b border-gray-100 text-sm font-semibold text-gray-700">פירוט לפי קטגוריה</div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 text-xs text-gray-500">
+                    <th className="px-5 py-2 text-right font-medium">קטגוריה</th>
+                    <th className="px-5 py-2 text-right font-medium">מתוכנן</th>
+                    <th className="px-5 py-2 text-right font-medium">בפועל</th>
+                    <th className="px-5 py-2 text-right font-medium">הפרש</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {budgetSummary.map(row => (
+                    <tr key={row.category} className="border-t border-gray-50 hover:bg-gray-50">
+                      <td className="px-5 py-2 font-medium text-gray-700">{row.category}</td>
+                      <td className="px-5 py-2 text-gray-500">{fmt(row.planned)}</td>
+                      <td className="px-5 py-2">{fmt(row.actual)}</td>
+                      <td className="px-5 py-2 font-medium" style={{ color: row.diff < 0 ? "#c0392b" : "#27ae60" }}>
+                        {row.diff > 0 ? "+" : ""}{fmt(row.diff)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Entries list */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+              <span className="text-sm font-semibold text-gray-700">רשומות תקציב</span>
+              <button
+                onClick={() => setShowAddEntry(true)}
+                className="text-xs px-3 py-1.5 rounded text-white"
+                style={{ background: "#011e41" }}
+              >
+                + הוסף רשומה
+              </button>
+            </div>
+
+            {showAddEntry && (
+              <div className="px-5 py-4 border-b border-blue-100 bg-blue-50 grid grid-cols-6 gap-3 items-end">
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">קטגוריה</div>
+                  <select value={newEntry.category} onChange={e => setNewEntry(p => ({ ...p, category: e.target.value }))} className="w-full text-sm border border-gray-200 rounded px-2 py-1.5 outline-none">
+                    {BUDGET_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <div className="text-xs text-gray-500 mb-1">תיאור *</div>
+                  <input value={newEntry.description} onChange={e => setNewEntry(p => ({ ...p, description: e.target.value }))} placeholder="תיאור..." className="w-full text-sm border border-gray-200 rounded px-2 py-1.5 outline-none" />
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">ספק</div>
+                  <input value={newEntry.vendor} onChange={e => setNewEntry(p => ({ ...p, vendor: e.target.value }))} placeholder="ספק..." className="w-full text-sm border border-gray-200 rounded px-2 py-1.5 outline-none" />
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">סכום *</div>
+                  <input type="number" value={newEntry.amount} onChange={e => setNewEntry(p => ({ ...p, amount: e.target.value }))} placeholder="0" className="w-full text-sm border border-gray-200 rounded px-2 py-1.5 outline-none" />
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">סוג</div>
+                  <select value={newEntry.is_planned} onChange={e => setNewEntry(p => ({ ...p, is_planned: e.target.value }))} className="w-full text-sm border border-gray-200 rounded px-2 py-1.5 outline-none">
+                    <option value="0">בפועל</option>
+                    <option value="1">מתוכנן</option>
+                  </select>
+                </div>
+                <div className="col-span-6 flex gap-2 justify-end">
+                  <button onClick={addBudgetEntry} className="text-xs px-4 py-1.5 rounded text-white" style={{ background: "#011e41" }}>שמור</button>
+                  <button onClick={() => setShowAddEntry(false)} className="text-xs px-4 py-1.5 rounded border border-gray-200 text-gray-600">ביטול</button>
+                </div>
+              </div>
+            )}
+
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 text-xs text-gray-500">
+                  <th className="px-5 py-2 text-right font-medium">קטגוריה</th>
+                  <th className="px-5 py-2 text-right font-medium">תיאור</th>
+                  <th className="px-5 py-2 text-right font-medium">ספק</th>
+                  <th className="px-5 py-2 text-right font-medium">סכום</th>
+                  <th className="px-5 py-2 text-right font-medium">סוג</th>
+                  <th className="px-5 py-2 w-10" />
+                </tr>
+              </thead>
+              <tbody>
+                {budgetEntries.map(entry => (
+                  <tr key={entry.id} className="border-t border-gray-50 hover:bg-gray-50 group">
+                    <td className="px-5 py-2 text-gray-600">{entry.category}</td>
+                    <td className="px-5 py-2 font-medium text-gray-800">{entry.description}</td>
+                    <td className="px-5 py-2 text-gray-500">{entry.vendor || "—"}</td>
+                    <td className="px-5 py-2 font-medium">{fmt(entry.amount)}</td>
+                    <td className="px-5 py-2">
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${entry.is_planned ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"}`}>
+                        {entry.is_planned ? "מתוכנן" : "בפועל"}
+                      </span>
+                    </td>
+                    <td className="px-2 py-2">
+                      <button onClick={() => deleteBudgetEntry(entry.id)} className="text-gray-200 hover:text-red-400 opacity-0 group-hover:opacity-100 text-xs">✕</button>
+                    </td>
+                  </tr>
+                ))}
+                {budgetEntries.length === 0 && (
+                  <tr><td colSpan={6} className="px-5 py-8 text-center text-gray-400 text-sm">אין רשומות תקציב עדיין</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Comments */}
+      {tab === "comments" && (
+        <div className="flex-1 flex overflow-hidden">
+          {/* Task list */}
+          <div className="w-72 border-l border-gray-200 bg-gray-50 overflow-y-auto flex-shrink-0">
+            <div className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">משימות</div>
+            {tasks.map(task => {
+              const stage = stages.find(s => s.id === task.stage_id);
+              return (
+                <button
+                  key={task.id}
+                  onClick={() => setSelectedTaskId(task.id)}
+                  className={`w-full text-right px-4 py-3 border-b border-gray-100 transition-colors ${selectedTaskId === task.id ? "bg-white border-r-2 border-r-[#011e41]" : "hover:bg-white"}`}
+                >
+                  <div className="text-sm font-medium text-gray-800 truncate">{task.title}</div>
+                  <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
+                    {stage && <span style={{ color: stage.color }}>{stage.name}</span>}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Comment thread */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {!selectedTaskId ? (
+              <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">בחר משימה להצגת הערות</div>
+            ) : (
+              <>
+                <div className="px-6 py-4 border-b border-gray-200 bg-white flex-shrink-0">
+                  <div className="font-semibold text-gray-800">{selectedTask?.title}</div>
+                </div>
+                <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+                  {comments.length === 0 && (
+                    <div className="text-center text-gray-400 text-sm py-8">אין הערות עדיין. היה הראשון!</div>
+                  )}
+                  {comments.map(c => (
+                    <div key={c.id} className="bg-white rounded-xl px-4 py-3 shadow-sm border border-gray-100">
+                      <div className="text-sm text-gray-800 whitespace-pre-wrap">{c.content}</div>
+                      <div className="text-xs text-gray-400 mt-1">{new Date(c.created_at).toLocaleString("he-IL")}</div>
+                    </div>
+                  ))}
+                  <div ref={commentsEndRef} />
+                </div>
+                <div className="px-6 py-4 border-t border-gray-200 bg-white flex-shrink-0">
+                  <div className="flex gap-2">
+                    <input
+                      value={newComment}
+                      onChange={e => setNewComment(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendComment(); } }}
+                      placeholder="כתוב הערה... (Enter לשליחה)"
+                      className="flex-1 text-sm border border-gray-200 rounded-lg px-4 py-2.5 outline-none focus:border-blue-300"
+                    />
+                    <button
+                      onClick={sendComment}
+                      className="px-4 py-2.5 rounded-lg text-white text-sm font-medium"
+                      style={{ background: "#011e41" }}
+                    >
+                      שלח
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

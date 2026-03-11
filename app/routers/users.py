@@ -1,10 +1,12 @@
-from uuid import UUID
+from uuid import UUID, uuid4
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
 from ..deps import get_current_user_id, get_db
+from ..email import notify_user_approved, notify_user_rejected
 
 router = APIRouter(prefix="/tenants/{tenant_id}/users", tags=["users"])
 
@@ -37,11 +39,6 @@ def create_user(
     return user
 
 
-@router.get("/{user_id}", response_model=schemas.UserRead)
-def read_user(tenant_id: UUID, user_id: UUID, db: Session = Depends(get_db)):
-    return _get_user_or_404(db, tenant_id, user_id)
-
-
 @router.get("/", response_model=list[schemas.UserRead])
 def list_users(tenant_id: UUID, db: Session = Depends(get_db)):
     return (
@@ -49,6 +46,11 @@ def list_users(tenant_id: UUID, db: Session = Depends(get_db)):
         .filter(models.User.tenant_id == tenant_id, models.User.deleted_at.is_(None))
         .all()
     )
+
+
+@router.get("/{user_id}", response_model=schemas.UserRead)
+def read_user(tenant_id: UUID, user_id: UUID, db: Session = Depends(get_db)):
+    return _get_user_or_404(db, tenant_id, user_id)
 
 
 @router.put("/{user_id}", response_model=schemas.UserRead)
@@ -77,3 +79,109 @@ def delete_user(
     crud.soft_delete_entity(db, user, changed_by=changed_by)
     db.commit()
     return None
+
+
+# ---------------------------------------------------------------------------
+# Admin endpoints — ניהול משתמשים
+# ---------------------------------------------------------------------------
+
+@router.post("/{user_id}/approve", response_model=schemas.UserRead, summary="אישור משתמש ממתין")
+def approve_user(
+    tenant_id: UUID,
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    changed_by: str | None = Depends(get_current_user_id),
+):
+    user = _get_user_or_404(db, tenant_id, user_id)
+    if user.status != "pending":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="המשתמש אינו ממתין לאישור")
+    user.status = "active"
+    user.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(user)
+    try:
+        notify_user_approved(user.email, user.name)
+    except Exception:
+        pass
+    return user
+
+
+@router.post("/{user_id}/reject", response_model=schemas.UserRead, summary="דחיית משתמש ממתין")
+def reject_user(
+    tenant_id: UUID,
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    changed_by: str | None = Depends(get_current_user_id),
+):
+    user = _get_user_or_404(db, tenant_id, user_id)
+    user.status = "rejected"
+    user.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(user)
+    try:
+        notify_user_rejected(user.email, user.name)
+    except Exception:
+        pass
+    return user
+
+
+@router.patch("/{user_id}/role", response_model=schemas.UserRead, summary="שינוי תפקיד משתמש")
+def change_role(
+    tenant_id: UUID,
+    user_id: UUID,
+    role: str,
+    db: Session = Depends(get_db),
+    changed_by: str | None = Depends(get_current_user_id),
+):
+    VALID_ROLES = ("member", "admin", "super_admin")
+    if role not in VALID_ROLES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"תפקיד לא תקין — אחד מ: {', '.join(VALID_ROLES)}")
+
+    # Get the actor's role
+    actor = db.query(models.User).filter(models.User.id == changed_by, models.User.deleted_at.is_(None)).first() if changed_by else None
+    actor_role = actor.role if actor else "member"
+
+    user = _get_user_or_404(db, tenant_id, user_id)
+
+    # Only super_admin can touch other super_admins or grant super_admin
+    if user.role == "super_admin" and actor_role != "super_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="רק super_admin יכול לשנות תפקיד של super_admin")
+    if role == "super_admin" and actor_role != "super_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="רק super_admin יכול להעניק תפקיד super_admin")
+
+    user.role = role
+    user.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@router.post("/invite", response_model=schemas.UserRead, status_code=status.HTTP_201_CREATED, summary="הזמנת משתמש לפי אימייל")
+def invite_user(
+    tenant_id: UUID,
+    invite_in: schemas.UserInvite,
+    db: Session = Depends(get_db),
+    inviter_id: str | None = Depends(get_current_user_id),
+):
+    # בדוק אם כבר קיים
+    existing = (
+        db.query(models.User)
+        .filter(models.User.email == invite_in.email, models.User.deleted_at.is_(None))
+        .first()
+    )
+    if existing:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="משתמש עם אימייל זה כבר קיים")
+
+    user = models.User(
+        id=uuid4(),
+        tenant_id=str(tenant_id),
+        email=invite_in.email,
+        name=invite_in.name,
+        role=invite_in.role or "member",
+        status="active",  # הזמנה ישירה מאדמין — מאושרת מיד
+        created_by=inviter_id,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user

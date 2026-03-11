@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from .. import models
 from ..deps import get_db
+from ..email import notify_pending_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -44,6 +45,7 @@ def create_access_token(user: models.User) -> str:
         "tenant_id": str(user.tenant_id),
         "email": user.email,
         "name": user.name,
+        "role": user.role or "member",
         "exp": expire,
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
@@ -156,10 +158,50 @@ def callback(
             db.refresh(user)
 
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"המשתמש {email} לא רשום במערכת. צור קשר עם מנהל המערכת.",
-        )
+        # Create a pending user — admin will need to approve
+        # Find the first tenant (single-tenant setup)
+        from sqlalchemy import text
+        tenant = db.execute(text("SELECT id FROM tenants WHERE deleted_at IS NULL LIMIT 1")).fetchone()
+        if tenant:
+            import uuid as _uuid
+            new_user = models.User(
+                id=_uuid.uuid4(),
+                tenant_id=str(tenant[0]),
+                email=email,
+                name=name,
+                google_id=google_id,
+                role="member",
+                status="pending",
+            )
+            db.add(new_user)
+            db.commit()
+            # Notify admins by email
+            try:
+                admins = db.query(models.User).filter(
+                    models.User.tenant_id == str(tenant[0]),
+                    models.User.role.in_(["admin", "super_admin"]),
+                    models.User.status == "active",
+                    models.User.deleted_at.is_(None),
+                ).all()
+                admin_emails = [a.email for a in admins if a.email]
+                if admin_emails:
+                    notify_pending_user(admin_emails, name, email)
+            except Exception:
+                pass
+
+        frontend_url = os.getenv("FRONTEND_URL", "")
+        pending_url = f"{frontend_url}/login?pending=1" if frontend_url else "/login?pending=1"
+        return RedirectResponse(url=pending_url)
+
+    if user.status == "pending":
+        frontend_url = os.getenv("FRONTEND_URL", "")
+        pending_url = f"{frontend_url}/login?pending=1" if frontend_url else "/login?pending=1"
+        return RedirectResponse(url=pending_url)
+
+    if user.status == "rejected":
+        frontend_url = os.getenv("FRONTEND_URL", "")
+        rejected_url = f"{frontend_url}/login?rejected=1" if frontend_url else "/login?rejected=1"
+        return RedirectResponse(url=rejected_url)
 
     token = create_access_token(user)
 
@@ -199,4 +241,11 @@ def get_me(authorization: str | None = None, db: Session = Depends(get_db)):
     ).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="משתמש לא נמצא")
-    return {"id": str(user.id), "name": user.name, "email": user.email, "tenant_id": str(user.tenant_id)}
+    return {
+        "id": str(user.id),
+        "name": user.name,
+        "email": user.email,
+        "tenant_id": str(user.tenant_id),
+        "role": user.role or "member",
+        "status": user.status or "active",
+    }

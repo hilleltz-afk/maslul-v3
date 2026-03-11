@@ -26,7 +26,21 @@ export default function ContactsPage() {
     apiFetch(`/tenants/${TENANT_ID}/contacts/`).then(setContacts).catch(console.error).finally(() => setLoading(false));
   }
 
-  async function handleCsvUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  function downloadTemplate() {
+    const token = localStorage.getItem("token");
+    fetch(`${API_BASE}/tenants/${TENANT_ID}/contacts/template-xlsx`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(res => res.blob())
+      .then(blob => {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "contacts_template.xlsx";
+        a.click();
+      });
+  }
+
+  async function handleXlsxUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setImporting(true);
@@ -34,16 +48,17 @@ export default function ContactsPage() {
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const res = await fetch(`${API_BASE}/tenants/${TENANT_ID}/contacts/import-csv`, {
+      const res = await fetch(`${API_BASE}/tenants/${TENANT_ID}/contacts/import-xlsx`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
       const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "שגיאה");
       alert(`יובאו ${data.imported} אנשי קשר`);
       load();
-    } catch {
-      alert("שגיאה בייבוא");
+    } catch (err: any) {
+      alert(err.message || "שגיאה בייבוא");
     } finally {
       setImporting(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -59,12 +74,15 @@ export default function ContactsPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold" style={{ color: "#011e41" }}>אנשי קשר</h1>
         <div className="flex gap-2">
-          <a href="/contacts_template.csv" download className="px-3 py-2 rounded-lg text-sm border border-gray-200 bg-white hover:bg-gray-50 text-gray-600">
-            ⬇ תבנית CSV
-          </a>
+          <button
+            onClick={downloadTemplate}
+            className="px-3 py-2 rounded-lg text-sm border border-gray-200 bg-white hover:bg-gray-50 text-gray-600"
+          >
+            ⬇ תבנית Excel
+          </button>
           <label className="px-3 py-2 rounded-lg text-sm text-white cursor-pointer" style={{ background: "#011e41" }}>
-            {importing ? "מייבא..." : "⬆ ייבא CSV"}
-            <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleCsvUpload} disabled={importing} />
+            {importing ? "מייבא..." : "⬆ ייבא Excel"}
+            <input ref={fileRef} type="file" accept=".xlsx" className="hidden" onChange={handleXlsxUpload} disabled={importing} />
           </label>
         </div>
       </div>
