@@ -21,20 +21,23 @@ try:
     current = row[0] if row else None
     print(f"fix_alembic_stamp: current version = {current}")
 
-    if current == "2a0708229abc":
-        # Check if tables beyond initial already exist (i.e., google_id column)
+    if current in (None, "2a0708229abc"):
+        # Check if tables already exist (tenants table)
         cur.execute(
-            "SELECT 1 FROM information_schema.columns "
-            "WHERE table_name='users' AND column_name='google_id'"
+            "SELECT 1 FROM information_schema.tables "
+            "WHERE table_name='tenants'"
         )
-        has_google_id = cur.fetchone()
+        has_tenants = cur.fetchone()
 
-        if has_google_id:
-            cur.execute("UPDATE alembic_version SET version_num = 'b1c2d3e4f5a6'")
+        if has_tenants:
+            if current is None:
+                cur.execute("INSERT INTO alembic_version (version_num) VALUES ('b1c2d3e4f5a6')")
+            else:
+                cur.execute("UPDATE alembic_version SET version_num = 'b1c2d3e4f5a6'")
             conn.commit()
             print("fix_alembic_stamp: stamped to b1c2d3e4f5a6")
         else:
-            print("fix_alembic_stamp: google_id not found, no stamp needed")
+            print("fix_alembic_stamp: no existing tables, fresh install")
 
     cur.close()
     conn.close()
