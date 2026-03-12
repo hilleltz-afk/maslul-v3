@@ -29,6 +29,7 @@ def run_migrations_offline():
 
 def run_migrations_online():
     db_url = os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
+    db_url = db_url.replace("postgres://", "postgresql://", 1)
     connectable = create_engine(db_url, poolclass=pool.NullPool)
     with connectable.connect() as connection:
         context.configure(
