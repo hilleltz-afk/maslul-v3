@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getLoginUrl } from "@/lib/api";
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const pending = searchParams.get("pending");
@@ -22,15 +22,10 @@ export default function LoginPage() {
     >
       <div className="bg-white rounded-2xl shadow-2xl p-12 flex flex-col items-center gap-8 w-full max-w-md">
         <div className="text-center">
-          <h1
-            className="text-3xl font-bold tracking-wide"
-            style={{ color: "#011e41" }}
-          >
+          <h1 className="text-3xl font-bold tracking-wide" style={{ color: "#011e41" }}>
             Hadas Capital
           </h1>
-          <p className="text-sm mt-1" style={{ color: "#a4742d" }}>
-            מערכת ניהול משרד
-          </p>
+          <p className="text-sm mt-1" style={{ color: "#a4742d" }}>מערכת ניהול משרד</p>
         </div>
 
         <div className="w-full h-px" style={{ background: "linear-gradient(90deg, #683918, #fcd562, #683918)" }} />
@@ -62,6 +57,14 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginContent />
+    </Suspense>
   );
 }
 
