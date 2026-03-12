@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode, quote
 
 import requests as http_requests
-from fastapi import APIRouter, Cookie, Depends, HTTPException, status
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, status
 from fastapi.responses import RedirectResponse
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
@@ -224,7 +224,7 @@ def callback(
 
 
 @router.get("/me", summary="פרטי המשתמש המחובר")
-def get_me(authorization: str | None = None, db: Session = Depends(get_db)):
+def get_me(authorization: str | None = Header(None), db: Session = Depends(get_db)):
     """מחזיר את פרטי המשתמש לפי JWT token."""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="נדרשת התחברות")
