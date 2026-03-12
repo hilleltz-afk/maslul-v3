@@ -1,45 +1,78 @@
 """
-One-time fix: if alembic_version is at 2a0708229abc but the DB already has all
-old tables (tenants, google_id column, etc.), stamp to b1c2d3e4f5a6 so that
-only the new migrations (role/status, budget/comments) will run.
+One-time fix: if Postgres already has the old tables but alembic_version is
+missing or stale, stamp to b1c2d3e4f5a6 so only the new migrations run.
 """
 import os
-import subprocess
+import psycopg2
 
 db_url = os.getenv("DATABASE_URL", "")
 if not db_url or db_url.startswith("sqlite"):
-    print("fix_alembic_stamp: SQLite detected, skipping.")
-    exit(0)
+    print("fix_alembic_stamp: SQLite — skipping.")
+    raise SystemExit(0)
+
+db_url = db_url.replace("postgres://", "postgresql://", 1)
+
+TARGET = "b1c2d3e4f5a6"
 
 try:
-    import psycopg2
     conn = psycopg2.connect(db_url)
+    conn.autocommit = False
     cur = conn.cursor()
 
-    cur.execute("SELECT version_num FROM alembic_version")
-    row = cur.fetchone()
-    current = row[0] if row else None
-    print(f"fix_alembic_stamp: current version = {current}")
+    # Check if tenants table exists (i.e. DB was already populated)
+    cur.execute(
+        "SELECT 1 FROM information_schema.tables WHERE table_name='tenants'"
+    )
+    has_tenants = cur.fetchone()
 
-    if current in (None, "2a0708229abc"):
-        # Check if tables already exist (tenants table)
+    if not has_tenants:
+        print("fix_alembic_stamp: fresh DB — nothing to do.")
+        cur.close(); conn.close()
+        raise SystemExit(0)
+
+    # Check if alembic_version table exists
+    cur.execute(
+        "SELECT 1 FROM information_schema.tables WHERE table_name='alembic_version'"
+    )
+    has_av = cur.fetchone()
+
+    if not has_av:
+        # Create alembic_version and insert target revision
         cur.execute(
-            "SELECT 1 FROM information_schema.tables "
-            "WHERE table_name='tenants'"
+            "CREATE TABLE alembic_version "
+            "(version_num VARCHAR(32) NOT NULL, "
+            "CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num))"
         )
-        has_tenants = cur.fetchone()
+        cur.execute(
+            "INSERT INTO alembic_version (version_num) VALUES (%s)", (TARGET,)
+        )
+        conn.commit()
+        print(f"fix_alembic_stamp: created alembic_version and stamped to {TARGET}")
+    else:
+        cur.execute("SELECT version_num FROM alembic_version")
+        row = cur.fetchone()
+        current = row[0] if row else None
+        print(f"fix_alembic_stamp: current = {current}")
 
-        if has_tenants:
+        if current in (None, "2a0708229abc"):
             if current is None:
-                cur.execute("INSERT INTO alembic_version (version_num) VALUES ('b1c2d3e4f5a6')")
+                cur.execute(
+                    "INSERT INTO alembic_version (version_num) VALUES (%s)", (TARGET,)
+                )
             else:
-                cur.execute("UPDATE alembic_version SET version_num = 'b1c2d3e4f5a6'")
+                cur.execute(
+                    "UPDATE alembic_version SET version_num = %s", (TARGET,)
+                )
             conn.commit()
-            print("fix_alembic_stamp: stamped to b1c2d3e4f5a6")
+            print(f"fix_alembic_stamp: stamped to {TARGET}")
         else:
-            print("fix_alembic_stamp: no existing tables, fresh install")
+            print(f"fix_alembic_stamp: already at {current} — no action needed.")
 
     cur.close()
     conn.close()
+
+except SystemExit:
+    raise
 except Exception as e:
-    print(f"fix_alembic_stamp error: {e}")
+    print(f"fix_alembic_stamp ERROR: {e}")
+    raise SystemExit(1)
