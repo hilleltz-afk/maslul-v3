@@ -78,6 +78,7 @@ class User(Base):
     email = Column(String, unique=True, nullable=False)
     name = Column(String, nullable=False)
     google_id = Column(String, unique=True, nullable=True)
+    gmail_refresh_token = Column(String, nullable=True)
     role = Column(String, nullable=False, default="member")  # admin / member
     status = Column(String, nullable=False, default="active")  # active / pending / rejected
     created_at = Column(DateTime, default=datetime.utcnow)

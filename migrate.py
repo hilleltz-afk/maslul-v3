@@ -7,7 +7,7 @@ import os
 import sys
 import psycopg2
 
-HEAD = "e4f5a6b7c8d9"
+HEAD = "f5a6b7c8d9e0"
 
 db_url = os.getenv("DATABASE_URL", "")
 
@@ -168,6 +168,7 @@ DDL = [
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR NOT NULL DEFAULT 'member'",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR NOT NULL DEFAULT 'active'",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS gmail_refresh_token VARCHAR",
     "ALTER TABLE projects ADD COLUMN IF NOT EXISTS address VARCHAR",
     "ALTER TABLE projects ADD COLUMN IF NOT EXISTS budget_total FLOAT",
     "ALTER TABLE stages ADD COLUMN IF NOT EXISTS color VARCHAR DEFAULT '#011e41'",

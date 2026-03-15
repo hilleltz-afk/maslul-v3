@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import { apiFetch } from "@/lib/api";
 
 const TENANT_ID = "f7d67cb1-3414-47a4-8ddb-2845d11d32ff";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 interface PipelineItem {
   id: string;
@@ -18,15 +20,23 @@ interface PipelineItem {
   created_at: string;
 }
 
-export default function PipelinePage() {
+function PipelineContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [items, setItems] = useState<PipelineItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
+  const [gmailConnected, setGmailConnected] = useState<boolean | null>(null);
+  const [fetchingGmail, setFetchingGmail] = useState(false);
+  const [gmailMsg, setGmailMsg] = useState("");
 
   useEffect(() => {
     if (!localStorage.getItem("token")) { router.replace("/login"); return; }
     load();
+    checkGmail();
+    if (searchParams.get("gmail_connected")) {
+      setGmailMsg("Gmail חובר בהצלחה!");
+    }
   }, [router]);
 
   function load() {
@@ -35,6 +45,36 @@ export default function PipelinePage() {
       .then(setItems)
       .catch(console.error)
       .finally(() => setLoading(false));
+  }
+
+  async function checkGmail() {
+    try {
+      const s = await apiFetch("/auth/gmail/status");
+      setGmailConnected(s.connected);
+    } catch {}
+  }
+
+  async function connectGmail() {
+    try {
+      const { url } = await apiFetch("/auth/gmail/connect");
+      window.location.href = url;
+    } catch (e: any) {
+      alert(e.message);
+    }
+  }
+
+  async function fetchGmail() {
+    setFetchingGmail(true);
+    setGmailMsg("");
+    try {
+      const res = await apiFetch(`/auth/gmail/fetch?tenant_id=${TENANT_ID}`, { method: "POST" });
+      setGmailMsg(`נוספו ${res.added} מיילים חדשים`);
+      if (res.added > 0) load();
+    } catch (e: any) {
+      setGmailMsg(e.message || "שגיאה");
+    } finally {
+      setFetchingGmail(false);
+    }
   }
 
   async function approve(id: string) {
@@ -63,9 +103,37 @@ export default function PipelinePage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold" style={{ color: "#011e41" }}>Email AI Pipeline</h1>
-        <p className="text-sm text-gray-500 mt-1">מיילים שעברו triage ומחכים לאישורך</p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold" style={{ color: "#011e41" }}>Email AI Pipeline</h1>
+          <p className="text-sm text-gray-500 mt-1">מיילים שעברו triage ומחכים לאישורך</p>
+        </div>
+
+        {/* Gmail connect / fetch */}
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {gmailMsg && (
+            <span className="text-sm text-green-600">{gmailMsg}</span>
+          )}
+          {gmailConnected === false && (
+            <button
+              onClick={connectGmail}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-white flex items-center gap-2"
+              style={{ background: "#011e41" }}
+            >
+              <span>חבר Gmail</span>
+            </button>
+          )}
+          {gmailConnected === true && (
+            <button
+              onClick={fetchGmail}
+              disabled={fetchingGmail}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-white flex items-center gap-2 disabled:opacity-60"
+              style={{ background: "#27ae60" }}
+            >
+              {fetchingGmail ? "שולף מיילים..." : "רענן מ-Gmail"}
+            </button>
+          )}
+        </div>
       </div>
 
       {loading ? (
@@ -129,5 +197,13 @@ export default function PipelinePage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function PipelinePage() {
+  return (
+    <Suspense>
+      <PipelineContent />
+    </Suspense>
   );
 }

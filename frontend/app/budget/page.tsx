@@ -197,7 +197,7 @@ export default function BudgetPage() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 mb-6 border-b border-gray-200">
+        <div className="flex gap-1 mb-6 border-b border-gray-200 items-center">
           {(["dashboard", "quotes"] as Tab[]).map(t => (
             <button
               key={t}
@@ -211,6 +211,13 @@ export default function BudgetPage() {
               {t === "dashboard" ? "דשבורד תקציב" : "הצעות מחיר"}
             </button>
           ))}
+          <a
+            href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/tenants/${TENANT_ID}/budget/export`}
+            className="mr-auto text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50"
+            download
+          >
+            יצא Excel
+          </a>
         </div>
 
         {loading && <div className="text-center py-20 text-gray-400">טוען...</div>}

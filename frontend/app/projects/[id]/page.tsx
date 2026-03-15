@@ -36,7 +36,7 @@ interface Quote { id: string; project_id?: string; vendor?: string; title: strin
 
 const DEFAULT_WIDTHS: Record<string, number> = { title: 300, assignee: 130, status: 140, priority: 110, start_date: 120, end_date: 120, notes: 200 };
 
-type Tab = "tasks" | "budget" | "comments";
+type Tab = "tasks" | "gantt" | "budget" | "comments";
 
 export default function ProjectPage() {
   const router = useRouter();
@@ -246,9 +246,10 @@ export default function ProjectPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-0 border-b border-gray-200 bg-white px-8 flex-shrink-0">
+      <div className="flex gap-0 border-b border-gray-200 bg-white px-8 flex-shrink-0 items-center">
         {[
           { id: "tasks" as Tab, label: "משימות" },
+          { id: "gantt" as Tab, label: "ציר זמן" },
           { id: "budget" as Tab, label: "תקציב" },
           { id: "comments" as Tab, label: "הערות" },
         ].map(t => (
@@ -260,6 +261,13 @@ export default function ProjectPage() {
             {t.label}
           </button>
         ))}
+        <a
+          href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/tenants/f7d67cb1-3414-47a4-8ddb-2845d11d32ff/projects/${projectId}/export`}
+          className="mr-auto text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 flex items-center gap-1"
+          download
+        >
+          יצא Excel
+        </a>
       </div>
 
       {/* Tab: Tasks */}
@@ -447,6 +455,93 @@ export default function ProjectPage() {
           </button>
         </div>
       )}
+
+      {/* Tab: Gantt */}
+      {tab === "gantt" && (() => {
+        const tasksWithDates = tasks.filter(t => t.start_date && t.end_date);
+        if (tasksWithDates.length === 0) {
+          return (
+            <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
+              אין משימות עם תאריכי התחלה וסיום להצגה
+            </div>
+          );
+        }
+
+        const allDates = tasksWithDates.flatMap(t => [new Date(t.start_date!), new Date(t.end_date!)]);
+        const minDate = new Date(Math.min(...allDates.map(d => d.getTime())));
+        const maxDate = new Date(Math.max(...allDates.map(d => d.getTime())));
+        minDate.setDate(1);
+        maxDate.setMonth(maxDate.getMonth() + 1, 1);
+        const totalDays = Math.ceil((maxDate.getTime() - minDate.getTime()) / 86400000);
+
+        // Generate month labels
+        const months: { label: string; pct: number }[] = [];
+        let cur = new Date(minDate);
+        while (cur < maxDate) {
+          const start = Math.max(0, (cur.getTime() - minDate.getTime()) / 86400000);
+          months.push({
+            label: cur.toLocaleDateString("he-IL", { month: "short", year: "2-digit" }),
+            pct: (start / totalDays) * 100,
+          });
+          cur.setMonth(cur.getMonth() + 1);
+        }
+
+        const STATUS_COLORS: Record<string, string> = { todo: "#aaa", in_progress: "#2980b9", done: "#27ae60", blocked: "#c0392b", review: "#8e44ad" };
+
+        return (
+          <div className="flex-1 overflow-auto px-6 py-4">
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              {/* Month header */}
+              <div className="relative h-8 border-b border-gray-200 bg-gray-50" style={{ marginRight: 220 }}>
+                {months.map((m, i) => (
+                  <div
+                    key={i}
+                    className="absolute top-0 h-full flex items-center text-xs text-gray-400 px-2 border-r border-gray-200"
+                    style={{ left: `${m.pct}%` }}
+                  >
+                    {m.label}
+                  </div>
+                ))}
+              </div>
+
+              {/* Task rows */}
+              {stages.map(stage => {
+                const stageTasks = tasksWithDates.filter(t => t.stage_id === stage.id);
+                if (stageTasks.length === 0) return null;
+                return (
+                  <div key={stage.id}>
+                    <div className="px-3 py-1.5 text-xs font-semibold bg-gray-50 border-b border-gray-100 flex items-center gap-2" style={{ color: stage.color || "#011e41" }}>
+                      <div className="w-2 h-2 rounded-full" style={{ background: stage.color || "#011e41" }} />
+                      {stage.name}
+                    </div>
+                    {stageTasks.map(task => {
+                      const start = (new Date(task.start_date!).getTime() - minDate.getTime()) / 86400000;
+                      const end = (new Date(task.end_date!).getTime() - minDate.getTime()) / 86400000;
+                      const leftPct = (start / totalDays) * 100;
+                      const widthPct = Math.max(0.5, ((end - start) / totalDays) * 100);
+                      const color = STATUS_COLORS[task.status] || "#aaa";
+                      return (
+                        <div key={task.id} className="flex items-center border-b border-gray-50 hover:bg-gray-50 py-1.5">
+                          <div className="text-sm text-gray-700 truncate flex-shrink-0 px-3" style={{ width: 220 }}>{task.title}</div>
+                          <div className="flex-1 relative h-6">
+                            <div
+                              className="absolute h-5 rounded-md top-0.5 flex items-center px-2 text-white text-xs overflow-hidden"
+                              style={{ left: `${leftPct}%`, width: `${widthPct}%`, background: color, minWidth: 4 }}
+                              title={`${task.start_date?.slice(0, 10)} → ${task.end_date?.slice(0, 10)}`}
+                            >
+                              {widthPct > 5 ? task.title : ""}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Tab: Budget */}
       {tab === "budget" && (
