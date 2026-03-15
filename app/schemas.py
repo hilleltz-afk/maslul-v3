@@ -123,6 +123,7 @@ class TaskCreate(BaseModel):
     project_id: UUID
     stage_id: UUID
     assignee_id: Optional[UUID] = None
+    contact_id: Optional[UUID] = None
     title: constr(min_length=1)
     description: Optional[str] = None
     priority: constr(min_length=1) = "medium"
@@ -136,6 +137,7 @@ class TaskCreate(BaseModel):
 class TaskUpdate(BaseModel):
     stage_id: Optional[UUID] = None
     assignee_id: Optional[UUID] = None
+    contact_id: Optional[UUID] = None
     title: Optional[constr(min_length=1)] = None
     description: Optional[str] = None
     priority: Optional[constr(min_length=1)] = None
@@ -152,6 +154,7 @@ class TaskRead(BaseRead):
     project_id: UUID
     stage_id: UUID
     assignee_id: Optional[UUID] = None
+    contact_id: Optional[UUID] = None
     title: str
     description: Optional[str] = None
     priority: str

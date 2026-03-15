@@ -131,6 +131,7 @@ class Task(Base):
     project_id = Column(GUID(), ForeignKey("projects.id"), nullable=False)
     stage_id = Column(GUID(), ForeignKey("stages.id"), nullable=False)
     assignee_id = Column(GUID(), ForeignKey("users.id"), nullable=True)
+    contact_id = Column(GUID(), ForeignKey("contacts.id"), nullable=True)
     title = Column(String, nullable=False)
     description = Column(Text)
     priority = Column(String, nullable=False)

@@ -24,9 +24,10 @@ const BUDGET_CATEGORIES = ["מגרש","תכנון","היתרים","בנייה","
 
 const GROUP_COLORS = ["#e74c3c","#e67e22","#f1c40f","#2ecc71","#1abc9c","#3498db","#9b59b6","#011e41"];
 
-interface Task { id: string; title: string; status: string; priority: string; description?: string; assignee_id?: string; start_date?: string; end_date?: string; stage_id: string; }
+interface Task { id: string; title: string; status: string; priority: string; description?: string; assignee_id?: string; contact_id?: string; start_date?: string; end_date?: string; stage_id: string; }
 interface Stage { id: string; name: string; color: string; handling_authority: string; }
 interface User { id: string; name: string; email: string; }
+interface Contact { id: string; name: string; profession?: string; }
 interface Project { id: string; name: string; gush: string; helka: string; budget_total?: number; address?: string; }
 interface BudgetEntry { id: string; category: string; description: string; vendor?: string; amount: number; entry_date?: string; is_planned: number; notes?: string; }
 interface BudgetSummary { category: string; planned: number; actual: number; diff: number; }
@@ -34,7 +35,7 @@ interface Comment { id: string; content: string; created_at: string; created_by?
 interface Milestone { id: string; quote_id: string; description: string; amount: number; due_date?: string; is_paid: number; }
 interface Quote { id: string; project_id?: string; vendor?: string; title: string; total_amount?: number; pdf_filename?: string; status: string; notes?: string; created_at: string; milestones: Milestone[]; }
 
-const DEFAULT_WIDTHS: Record<string, number> = { title: 300, assignee: 130, status: 140, priority: 110, start_date: 120, end_date: 120, notes: 200 };
+const DEFAULT_WIDTHS: Record<string, number> = { title: 300, assignee: 130, contact: 160, status: 140, priority: 110, start_date: 120, end_date: 120, notes: 200 };
 
 type Tab = "tasks" | "gantt" | "budget" | "comments";
 
@@ -59,6 +60,14 @@ export default function ProjectPage() {
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const dragCol = useRef<{ col: string; startX: number; startW: number } | null>(null);
 
+  // Contacts
+  const [contacts, setContacts] = useState<Contact[]>([]);
+
+  // Stage editing
+  const [editingStageId, setEditingStageId] = useState<string | null>(null);
+  const [editingStageName, setEditingStageName] = useState("");
+  const [dragStageId, setDragStageId] = useState<string | null>(null);
+
   // Budget state
   const [budgetEntries, setBudgetEntries] = useState<BudgetEntry[]>([]);
   const [budgetSummary, setBudgetSummary] = useState<BudgetSummary[]>([]);
@@ -82,11 +91,25 @@ export default function ProjectPage() {
       apiFetch(`/tenants/${TENANT_ID}/stages/?project_id=${projectId}`),
       apiFetch(`/tenants/${TENANT_ID}/tasks/?project_id=${projectId}`),
       apiFetch(`/tenants/${TENANT_ID}/users/`),
-    ]).then(([proj, stgs, tsks, usrs]) => {
+      apiFetch(`/tenants/${TENANT_ID}/contacts/`).catch(() => []),
+    ]).then(([proj, stgs, tsks, usrs, ctcts]) => {
       setProject(proj);
-      setStages(stgs);
       setTasks(tsks);
       setUsers(usrs);
+      setContacts(ctcts);
+      // Apply saved stage order
+      const savedOrder = localStorage.getItem(`stage_order_${projectId}`);
+      if (savedOrder) {
+        try {
+          const order = JSON.parse(savedOrder) as string[];
+          setStages([...stgs].sort((a: Stage, b: Stage) => {
+            const ai = order.indexOf(a.id), bi = order.indexOf(b.id);
+            return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+          }));
+        } catch { setStages(stgs); }
+      } else {
+        setStages(stgs);
+      }
     }).catch(console.error);
   }, [projectId, router]);
 
@@ -167,8 +190,39 @@ export default function ProjectPage() {
   }
 
   async function updateTask(taskId: string, data: Partial<Task>) {
-    await apiFetch(`/tenants/${TENANT_ID}/tasks/${taskId}`, { method: "PATCH", body: JSON.stringify(data) });
+    await apiFetch(`/tenants/${TENANT_ID}/tasks/${taskId}`, { method: "PUT", body: JSON.stringify(data) });
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...data } : t));
+  }
+
+  async function updateStage(stageId: string, data: { name?: string; color?: string }) {
+    const stage = stages.find(s => s.id === stageId);
+    if (!stage) return;
+    await apiFetch(`/tenants/${TENANT_ID}/stages/${stageId}`, {
+      method: "PUT",
+      body: JSON.stringify({ handling_authority: stage.handling_authority || "—", ...data }),
+    });
+    setStages(prev => prev.map(s => s.id === stageId ? { ...s, ...data } : s));
+  }
+
+  function handleStageDragOver(e: React.DragEvent, targetId: string) {
+    e.preventDefault();
+    if (!dragStageId || dragStageId === targetId) return;
+    setStages(prev => {
+      const from = prev.findIndex(s => s.id === dragStageId);
+      const to = prev.findIndex(s => s.id === targetId);
+      if (from === -1 || to === -1) return prev;
+      const arr = [...prev];
+      arr.splice(to, 0, arr.splice(from, 1)[0]);
+      return arr;
+    });
+  }
+
+  function handleStageDragEnd() {
+    setDragStageId(null);
+    setStages(prev => {
+      localStorage.setItem(`stage_order_${projectId}`, JSON.stringify(prev.map(s => s.id)));
+      return prev;
+    });
   }
 
   async function addTask(stageId: string) {
@@ -218,12 +272,13 @@ export default function ProjectPage() {
 
   const totalPlanned = budgetSummary.reduce((s, r) => s + r.planned, 0);
   const totalActual = budgetSummary.reduce((s, r) => s + r.actual, 0);
-  const budgetTotal = project?.budget_total || totalPlanned || 1;
-  const pct = Math.min(100, Math.round((totalActual / budgetTotal) * 100));
+  const budgetTotal = project?.budget_total ?? (totalPlanned > 0 ? totalPlanned : 0);
+  const pct = budgetTotal > 0 ? Math.min(100, Math.round((totalActual / budgetTotal) * 100)) : 0;
 
   const columns = [
     { key: "title", label: "משימה" },
     { key: "assignee", label: "איש צוות" },
+    { key: "contact", label: "גורם מטפל" },
     { key: "status", label: "סטטוס" },
     { key: "priority", label: "עדיפות" },
     { key: "start_date", label: "התחלה" },
@@ -277,12 +332,63 @@ export default function ProjectPage() {
             const stageTasks = tasks.filter(t => t.stage_id === stage.id);
             const isCollapsed = collapsed[stage.id];
             return (
-              <div key={stage.id} className="mb-6">
-                <div className="flex items-center gap-2 mb-1 cursor-pointer select-none" onClick={() => setCollapsed(p => ({ ...p, [stage.id]: !p[stage.id] }))}>
-                  <div className="w-1 h-5 rounded-full flex-shrink-0" style={{ background: stage.color || "#011e41" }} />
-                  <span className="font-semibold text-sm" style={{ color: stage.color || "#011e41" }}>{stage.name}</span>
+              <div
+                key={stage.id}
+                className="mb-6"
+                onDragOver={e => handleStageDragOver(e, stage.id)}
+              >
+                <div className="flex items-center gap-2 mb-1 select-none">
+                  {/* Drag handle */}
+                  <span
+                    className="text-gray-300 cursor-grab text-xs px-0.5"
+                    draggable
+                    onDragStart={() => setDragStageId(stage.id)}
+                    onDragEnd={handleStageDragEnd}
+                  >⠿</span>
+                  {/* Color picker */}
+                  <div className="relative flex-shrink-0" style={{ width: 12, height: 20 }}>
+                    <div className="w-3 h-5 rounded-full" style={{ background: stage.color || "#011e41" }} />
+                    <input
+                      type="color"
+                      value={stage.color || "#011e41"}
+                      onChange={e => updateStage(stage.id, { color: e.target.value })}
+                      className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                      title="שנה צבע"
+                    />
+                  </div>
+                  {/* Name - click to edit */}
+                  {editingStageId === stage.id ? (
+                    <input
+                      autoFocus
+                      value={editingStageName}
+                      onChange={e => setEditingStageName(e.target.value)}
+                      onBlur={() => {
+                        if (editingStageName.trim()) updateStage(stage.id, { name: editingStageName });
+                        setEditingStageId(null);
+                      }}
+                      onKeyDown={e => {
+                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                        if (e.key === "Escape") setEditingStageId(null);
+                      }}
+                      className="font-semibold text-sm outline-none border-b border-blue-400 bg-transparent"
+                      style={{ color: stage.color || "#011e41", minWidth: 80 }}
+                    />
+                  ) : (
+                    <span
+                      className="font-semibold text-sm cursor-pointer hover:underline"
+                      style={{ color: stage.color || "#011e41" }}
+                      onClick={() => { setEditingStageId(stage.id); setEditingStageName(stage.name); }}
+                    >
+                      {stage.name}
+                    </span>
+                  )}
                   <span className="text-xs text-gray-400">({stageTasks.length})</span>
-                  <span className="text-xs text-gray-400 mr-auto">{isCollapsed ? "◀" : "▼"}</span>
+                  <span
+                    className="text-xs text-gray-400 mr-auto cursor-pointer"
+                    onClick={() => setCollapsed(p => ({ ...p, [stage.id]: !p[stage.id] }))}
+                  >
+                    {isCollapsed ? "◀" : "▼"}
+                  </span>
                 </div>
 
                 {!isCollapsed && (
@@ -334,6 +440,18 @@ export default function ProjectPage() {
                             >
                               <option value="">—</option>
                               {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                            </select>
+                          </div>
+
+                          {/* Contact (professional handler) */}
+                          <div className="px-2 py-1.5 border-r border-gray-100" style={{ width: getW("contact"), minWidth: getW("contact") }}>
+                            <select
+                              value={task.contact_id || ""}
+                              onChange={e => updateTask(task.id, { contact_id: e.target.value || undefined })}
+                              className="w-full text-xs bg-transparent outline-none cursor-pointer"
+                            >
+                              <option value="">—</option>
+                              {contacts.map(c => <option key={c.id} value={c.id}>{c.name}{c.profession ? ` (${c.profession})` : ""}</option>)}
                             </select>
                           </div>
 
@@ -550,7 +668,7 @@ export default function ProjectPage() {
           <div className="grid grid-cols-3 gap-4 mb-6">
             <div className="bg-white rounded-xl p-5 border border-gray-200">
               <div className="text-xs text-gray-400 mb-1">תקציב כולל</div>
-              <div className="text-2xl font-bold" style={{ color: "#011e41" }}>{fmt(budgetTotal)}</div>
+              <div className="text-2xl font-bold" style={{ color: "#011e41" }}>{budgetTotal ? fmt(budgetTotal) : "—"}</div>
             </div>
             <div className="bg-white rounded-xl p-5 border border-gray-200">
               <div className="text-xs text-gray-400 mb-1">בפועל</div>
@@ -558,7 +676,7 @@ export default function ProjectPage() {
             </div>
             <div className="bg-white rounded-xl p-5 border border-gray-200">
               <div className="text-xs text-gray-400 mb-1">יתרה</div>
-              <div className="text-2xl font-bold" style={{ color: budgetTotal - totalActual < 0 ? "#c0392b" : "#011e41" }}>{fmt(budgetTotal - totalActual)}</div>
+              <div className="text-2xl font-bold" style={{ color: budgetTotal && (budgetTotal - totalActual) < 0 ? "#c0392b" : "#011e41" }}>{budgetTotal ? fmt(budgetTotal - totalActual) : "—"}</div>
             </div>
           </div>
 
