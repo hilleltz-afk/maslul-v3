@@ -15,6 +15,7 @@ from fastapi.responses import RedirectResponse
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
+from .. import ai as ai_service
 from .. import models
 from ..deps import get_db
 
@@ -197,6 +198,14 @@ def fetch_gmail(
         body = _decode_body(msg_data.get("payload", {}))
 
         now = datetime.now(timezone.utc)
+
+        # Triage with Claude Haiku
+        try:
+            triage = ai_service.triage_email(sender, subject, body[:500])
+        except Exception:
+            triage = None
+
+        pipeline_status = models.EmailPipelineStatus.PENDING
         item = models.EmailPipelineItem(
             tenant_id=tenant_id,
             gmail_message_id=msg_id,
@@ -204,11 +213,48 @@ def fetch_gmail(
             subject=subject,
             body_preview=body[:500],
             full_body=body,
-            status=models.EmailPipelineStatus.PENDING,
+            status=pipeline_status,
             created_at=now,
             updated_at=now,
             created_by=str(user.id),
         )
+
+        if triage:
+            item.triage_is_relevant = 1 if triage.is_relevant else 0
+            item.triage_confidence = triage.confidence
+            item.triage_reason = triage.reason
+            if not triage.is_relevant:
+                item.status = models.EmailPipelineStatus.TRIAGED_OUT
+            else:
+                # Analysis with Claude Sonnet
+                try:
+                    projects = db.query(models.Project).filter(
+                        models.Project.tenant_id == str(tenant_id),
+                        models.Project.deleted_at.is_(None),
+                    ).all()
+                    project_names = [p.name for p in projects]
+                    analysis = ai_service.analyse_email(sender, subject, body, project_names)
+
+                    matched_project_id = None
+                    if analysis.project_name_guess and projects:
+                        candidates = ai_service.find_duplicate_projects(
+                            db=db, tenant_id=str(tenant_id),
+                            name=analysis.project_name_guess, gush="", helka="",
+                        )
+                        if candidates and candidates[0].similarity >= 0.7:
+                            matched_project_id = candidates[0].id
+
+                    item.suggested_project_id = matched_project_id
+                    item.project_match_confidence = analysis.confidence_project_match
+                    item.suggested_task_name = analysis.suggested_task_name
+                    item.suggested_priority = analysis.suggested_priority
+                    item.suggested_assignee = analysis.suggested_assignee
+                    item.has_attachments = 1 if analysis.has_attachments else 0
+                    item.budget_mentioned = analysis.budget_mentioned
+                    item.analysis_notes = analysis.notes
+                except Exception:
+                    pass  # Analysis failed — still save as PENDING
+
         db.add(item)
         added += 1
 

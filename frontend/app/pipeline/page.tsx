@@ -16,9 +16,15 @@ interface PipelineItem {
   status: string;
   suggested_task_name?: string;
   suggested_priority?: string;
+  suggested_project_id?: string;
   triage_confidence?: number;
+  triage_reason?: string;
+  analysis_notes?: string;
   created_at: string;
 }
+interface Project { id: string; name: string; }
+interface Stage { id: string; name: string; project_id: string; }
+interface User { id: string; name: string; }
 
 function PipelineContent() {
   const router = useRouter();
@@ -30,6 +36,15 @@ function PipelineContent() {
   const [fetchingGmail, setFetchingGmail] = useState(false);
   const [gmailMsg, setGmailMsg] = useState("");
 
+  // Data for approve modal
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [stages, setStages] = useState<Stage[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+
+  // Approve modal state
+  const [approveItem, setApproveItem] = useState<PipelineItem | null>(null);
+  const [approveForm, setApproveForm] = useState({ project_id: "", stage_id: "", task_title: "", priority: "medium", assignee_id: "" });
+
   useEffect(() => {
     if (!localStorage.getItem("token")) { router.replace("/login"); return; }
     load();
@@ -37,6 +52,12 @@ function PipelineContent() {
     if (searchParams.get("gmail_connected")) {
       setGmailMsg("Gmail חובר בהצלחה!");
     }
+    // Load projects, stages, users for approve modal
+    Promise.all([
+      apiFetch(`/tenants/${TENANT_ID}/projects/`),
+      apiFetch(`/tenants/${TENANT_ID}/stages/`),
+      apiFetch(`/tenants/${TENANT_ID}/users/`),
+    ]).then(([p, s, u]) => { setProjects(p); setStages(s); setUsers(u); }).catch(() => {});
   }, [router]);
 
   function load() {
@@ -77,10 +98,35 @@ function PipelineContent() {
     }
   }
 
-  async function approve(id: string) {
-    setActing(id);
+  function openApprove(item: PipelineItem) {
+    setApproveForm({
+      project_id: item.suggested_project_id || "",
+      stage_id: "",
+      task_title: item.suggested_task_name || item.subject,
+      priority: item.suggested_priority || "medium",
+      assignee_id: "",
+    });
+    setApproveItem(item);
+  }
+
+  async function submitApprove() {
+    if (!approveItem || !approveForm.project_id || !approveForm.stage_id || !approveForm.task_title) {
+      alert("יש לבחור פרויקט, קבוצה וכותרת משימה");
+      return;
+    }
+    setActing(approveItem.id);
     try {
-      await apiFetch(`/tenants/${TENANT_ID}/pipeline/${id}/approve`, { method: "POST" });
+      await apiFetch(`/tenants/${TENANT_ID}/pipeline/${approveItem.id}/approve`, {
+        method: "POST",
+        body: JSON.stringify({
+          project_id: approveForm.project_id,
+          stage_id: approveForm.stage_id,
+          task_title: approveForm.task_title,
+          priority: approveForm.priority,
+          assignee_id: approveForm.assignee_id || null,
+        }),
+      });
+      setApproveItem(null);
       load();
     } catch (e: any) {
       alert(e.message);
@@ -162,10 +208,7 @@ function PipelineContent() {
               </div>
 
               {item.suggested_task_name && (
-                <div
-                  className="mt-3 p-3 rounded-lg text-sm"
-                  style={{ background: "#f0f4ff" }}
-                >
+                <div className="mt-3 p-3 rounded-lg text-sm" style={{ background: "#f0f4ff" }}>
                   <span className="font-medium" style={{ color: "#011e41" }}>משימה מוצעת: </span>
                   <span className="text-gray-600">{item.suggested_task_name}</span>
                   {item.suggested_priority && (
@@ -173,10 +216,13 @@ function PipelineContent() {
                   )}
                 </div>
               )}
+              {item.analysis_notes && (
+                <div className="mt-2 text-xs text-gray-400 italic">{item.analysis_notes}</div>
+              )}
 
               <div className="flex gap-2 mt-4">
                 <button
-                  onClick={() => approve(item.id)}
+                  onClick={() => openApprove(item)}
                   disabled={acting === item.id}
                   className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                   style={{ background: "#27ae60" }}
@@ -194,6 +240,87 @@ function PipelineContent() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Approve modal */}
+      {approveItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" dir="rtl" onClick={() => setApproveItem(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-1" style={{ color: "#011e41" }}>אישור ויצירת משימה</h2>
+            <p className="text-xs text-gray-400 mb-4 truncate">{approveItem.subject}</p>
+            <div className="flex flex-col gap-3">
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">כותרת המשימה *</label>
+                <input
+                  value={approveForm.task_title}
+                  onChange={e => setApproveForm(p => ({ ...p, task_title: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-300"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">פרויקט *</label>
+                <select
+                  value={approveForm.project_id}
+                  onChange={e => setApproveForm(p => ({ ...p, project_id: e.target.value, stage_id: "" }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"
+                >
+                  <option value="">בחר פרויקט...</option>
+                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">קבוצת משימות *</label>
+                <select
+                  value={approveForm.stage_id}
+                  onChange={e => setApproveForm(p => ({ ...p, stage_id: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"
+                  disabled={!approveForm.project_id}
+                >
+                  <option value="">בחר קבוצה...</option>
+                  {stages.filter(s => s.project_id === approveForm.project_id).map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">עדיפות</label>
+                  <select
+                    value={approveForm.priority}
+                    onChange={e => setApproveForm(p => ({ ...p, priority: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"
+                  >
+                    <option value="high">גבוהה</option>
+                    <option value="medium">בינונית</option>
+                    <option value="low">נמוכה</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">שייך לאיש צוות</label>
+                  <select
+                    value={approveForm.assignee_id}
+                    onChange={e => setApproveForm(p => ({ ...p, assignee_id: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"
+                  >
+                    <option value="">—</option>
+                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-5 justify-end">
+              <button onClick={() => setApproveItem(null)} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">ביטול</button>
+              <button
+                onClick={submitApprove}
+                disabled={!!acting}
+                className="px-4 py-2 rounded-lg text-sm text-white font-medium disabled:opacity-60"
+                style={{ background: "#27ae60" }}
+              >
+                {acting ? "יוצר משימה..." : "צור משימה ✓"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
