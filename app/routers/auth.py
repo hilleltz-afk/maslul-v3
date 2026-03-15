@@ -30,7 +30,7 @@ GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 REDIRECT_URI = os.getenv("REDIRECT_URI", "http://localhost:8000/auth/callback")
 SECRET_KEY = os.getenv("SECRET_KEY", "maslul-dev-secret-change-in-production")
 ALGORITHM = "HS256"
-TOKEN_EXPIRE_HOURS = 24
+TOKEN_EXPIRE_HOURS = 24 * 7  # 7 days
 
 
 # ---------------------------------------------------------------------------

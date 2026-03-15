@@ -12,6 +12,11 @@ export async function apiFetch(path: string, options?: RequestInit) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: "שגיאה לא ידועה" }));
+    if (res.status === 401 && typeof window !== "undefined") {
+      localStorage.removeItem("token");
+      window.location.href = "/login";
+      return;
+    }
     throw new Error(err.detail || "שגיאה");
   }
   return res.json();
