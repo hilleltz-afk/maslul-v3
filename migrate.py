@@ -7,7 +7,7 @@ import os
 import sys
 import psycopg2
 
-HEAD = "d3e4f5a6b7c8"
+HEAD = "e4f5a6b7c8d9"
 
 db_url = os.getenv("DATABASE_URL", "")
 
@@ -202,6 +202,37 @@ DDL = [
         tenant_id VARCHAR(36) REFERENCES tenants(id) NOT NULL,
         task_id VARCHAR(36) REFERENCES tasks(id) NOT NULL,
         content TEXT NOT NULL,
+        created_at TIMESTAMP,
+        updated_at TIMESTAMP,
+        deleted_at TIMESTAMP,
+        created_by VARCHAR(36)
+    )""",
+    """CREATE TABLE IF NOT EXISTS quotes (
+        id VARCHAR(36) PRIMARY KEY,
+        tenant_id VARCHAR(36) REFERENCES tenants(id) NOT NULL,
+        project_id VARCHAR(36) REFERENCES projects(id),
+        vendor VARCHAR,
+        title VARCHAR NOT NULL,
+        total_amount FLOAT,
+        pdf_filename VARCHAR,
+        ai_extracted_data TEXT,
+        status VARCHAR NOT NULL DEFAULT 'pending_review',
+        notes TEXT,
+        created_at TIMESTAMP,
+        updated_at TIMESTAMP,
+        deleted_at TIMESTAMP,
+        created_by VARCHAR(36)
+    )""",
+    """CREATE TABLE IF NOT EXISTS payment_milestones (
+        id VARCHAR(36) PRIMARY KEY,
+        tenant_id VARCHAR(36) REFERENCES tenants(id) NOT NULL,
+        quote_id VARCHAR(36) REFERENCES quotes(id) NOT NULL,
+        project_id VARCHAR(36) REFERENCES projects(id),
+        description VARCHAR NOT NULL,
+        amount FLOAT NOT NULL,
+        due_date TIMESTAMP,
+        paid_at TIMESTAMP,
+        is_paid INTEGER DEFAULT 0,
         created_at TIMESTAMP,
         updated_at TIMESTAMP,
         deleted_at TIMESTAMP,

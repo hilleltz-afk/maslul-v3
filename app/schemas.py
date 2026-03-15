@@ -280,6 +280,71 @@ class EmailApproveRequest(BaseModel):
 # Budget schemas
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Quote schemas
+# ---------------------------------------------------------------------------
+
+class PaymentMilestoneCreate(BaseModel):
+    description: constr(min_length=1)
+    amount: float
+    due_date: Optional[datetime] = None
+    is_paid: int = 0
+
+
+class PaymentMilestoneRead(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    quote_id: UUID
+    project_id: Optional[UUID] = None
+    description: str
+    amount: float
+    due_date: Optional[datetime] = None
+    paid_at: Optional[datetime] = None
+    is_paid: int = 0
+    created_at: datetime
+    created_by: Optional[UUID] = None
+
+    model_config = {"from_attributes": True}
+
+
+class PaymentMilestoneUpdate(BaseModel):
+    description: Optional[str] = None
+    amount: Optional[float] = None
+    due_date: Optional[datetime] = None
+    is_paid: Optional[int] = None
+    paid_at: Optional[datetime] = None
+
+
+class QuoteCreate(BaseModel):
+    project_id: Optional[UUID] = None
+    vendor: Optional[str] = None
+    title: constr(min_length=1)
+    total_amount: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class QuoteUpdate(BaseModel):
+    project_id: Optional[UUID] = None
+    vendor: Optional[str] = None
+    title: Optional[str] = None
+    total_amount: Optional[float] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class QuoteRead(BaseRead):
+    tenant_id: UUID
+    project_id: Optional[UUID] = None
+    vendor: Optional[str] = None
+    title: str
+    total_amount: Optional[float] = None
+    pdf_filename: Optional[str] = None
+    ai_extracted_data: Optional[str] = None
+    status: str
+    notes: Optional[str] = None
+    milestones: list[PaymentMilestoneRead] = []
+
+
 class BudgetEntryCreate(BaseModel):
     category: constr(min_length=1)
     description: constr(min_length=1)

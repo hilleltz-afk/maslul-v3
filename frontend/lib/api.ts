@@ -17,6 +17,20 @@ export async function apiFetch(path: string, options?: RequestInit) {
   return res.json();
 }
 
+export async function apiUpload(path: string, formData: FormData) {
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "שגיאה לא ידועה" }));
+    throw new Error(err.detail || "שגיאה");
+  }
+  return res.json();
+}
+
 export function getLoginUrl() {
   return `${API_BASE}/auth/login`;
 }

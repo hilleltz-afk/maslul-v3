@@ -209,6 +209,43 @@ class TaskComment(Base):
     created_by = Column(GUID(), ForeignKey("users.id"), nullable=True)
 
 
+class Quote(Base):
+    """הצעת מחיר — מנותחת על ידי AI מ-PDF."""
+    __tablename__ = "quotes"
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(GUID(), ForeignKey("tenants.id"), nullable=False)
+    project_id = Column(GUID(), ForeignKey("projects.id"), nullable=True)  # AI-assigned
+    vendor = Column(String, nullable=True)
+    title = Column(String, nullable=False)
+    total_amount = Column(Float, nullable=True)
+    pdf_filename = Column(String, nullable=True)
+    ai_extracted_data = Column(Text, nullable=True)  # JSON
+    status = Column(String, nullable=False, default="pending_review")  # pending_review/approved/rejected
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True)
+    created_by = Column(GUID(), ForeignKey("users.id"), nullable=True)
+
+
+class PaymentMilestone(Base):
+    """אבן דרך לתשלום — מקושרת להצעת מחיר ולפרויקט."""
+    __tablename__ = "payment_milestones"
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(GUID(), ForeignKey("tenants.id"), nullable=False)
+    quote_id = Column(GUID(), ForeignKey("quotes.id"), nullable=False)
+    project_id = Column(GUID(), ForeignKey("projects.id"), nullable=True)
+    description = Column(String, nullable=False)
+    amount = Column(Float, nullable=False)
+    due_date = Column(DateTime, nullable=True)
+    paid_at = Column(DateTime, nullable=True)
+    is_paid = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True)
+    created_by = Column(GUID(), ForeignKey("users.id"), nullable=True)
+
+
 class EmailPipelineStatus(PyEnum):
     TRIAGED_OUT = "TRIAGED_OUT"   # לא רלוונטי — נסנן
     PENDING = "PENDING"            # ממתין לאישור אנושי

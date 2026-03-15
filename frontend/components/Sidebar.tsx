@@ -8,6 +8,7 @@ import { apiFetch } from "@/lib/api";
 const mainNavItems = [
   { href: "/dashboard", label: "דשבורד", icon: "⊞" },
   { href: "/projects", label: "פרויקטים", icon: "🏗" },
+  { href: "/budget", label: "תקציב", icon: "₪" },
   { href: "/pipeline", label: "Pipeline AI", icon: "✉" },
 ];
 

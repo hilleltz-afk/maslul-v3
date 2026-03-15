@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, apiUpload } from "@/lib/api";
 
 const TENANT_ID = "f7d67cb1-3414-47a4-8ddb-2845d11d32ff";
 
@@ -31,6 +31,8 @@ interface Project { id: string; name: string; gush: string; helka: string; budge
 interface BudgetEntry { id: string; category: string; description: string; vendor?: string; amount: number; entry_date?: string; is_planned: number; notes?: string; }
 interface BudgetSummary { category: string; planned: number; actual: number; diff: number; }
 interface Comment { id: string; content: string; created_at: string; created_by?: string; }
+interface Milestone { id: string; quote_id: string; description: string; amount: number; due_date?: string; is_paid: number; }
+interface Quote { id: string; project_id?: string; vendor?: string; title: string; total_amount?: number; pdf_filename?: string; status: string; notes?: string; created_at: string; milestones: Milestone[]; }
 
 const DEFAULT_WIDTHS: Record<string, number> = { title: 300, assignee: 130, status: 140, priority: 110, start_date: 120, end_date: 120, notes: 200 };
 
@@ -62,6 +64,10 @@ export default function ProjectPage() {
   const [budgetSummary, setBudgetSummary] = useState<BudgetSummary[]>([]);
   const [showAddEntry, setShowAddEntry] = useState(false);
   const [newEntry, setNewEntry] = useState({ category: "בנייה", description: "", vendor: "", amount: "", is_planned: "0", notes: "" });
+  const [projectQuotes, setProjectQuotes] = useState<Quote[]>([]);
+  const [quotesUploading, setQuotesUploading] = useState(false);
+  const [expandedQuoteId, setExpandedQuoteId] = useState<string | null>(null);
+  const quoteFileRef = useRef<HTMLInputElement>(null);
 
   // Comments state
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -97,12 +103,44 @@ export default function ProjectPage() {
   }, [comments]);
 
   async function loadBudget() {
-    const [entries, summary] = await Promise.all([
+    const [entries, summary, quotes] = await Promise.all([
       apiFetch(`/tenants/${TENANT_ID}/projects/${projectId}/budget/`).catch(() => []),
       apiFetch(`/tenants/${TENANT_ID}/projects/${projectId}/budget/summary`).catch(() => []),
+      apiFetch(`/tenants/${TENANT_ID}/quotes/?project_id=${projectId}`).catch(() => []),
     ]);
     setBudgetEntries(entries);
     setBudgetSummary(summary);
+    setProjectQuotes(quotes);
+  }
+
+  async function handleQuoteUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setQuotesUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      await apiUpload(`/tenants/${TENANT_ID}/quotes/upload`, fd);
+      await loadBudget();
+    } catch (err: any) {
+      alert(err.message || "שגיאה בהעלאה");
+    } finally {
+      setQuotesUploading(false);
+      if (quoteFileRef.current) quoteFileRef.current.value = "";
+    }
+  }
+
+  async function toggleMilestonePaid(quote: Quote, ms: Milestone) {
+    const newPaid = ms.is_paid === 1 ? 0 : 1;
+    await apiFetch(`/tenants/${TENANT_ID}/quotes/${quote.id}/milestones/${ms.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ is_paid: newPaid }),
+    });
+    setProjectQuotes(prev => prev.map(q =>
+      q.id === quote.id
+        ? { ...q, milestones: q.milestones.map(m => m.id === ms.id ? { ...m, is_paid: newPaid } : m) }
+        : q
+    ));
   }
 
   async function loadComments(taskId: string) {
@@ -552,6 +590,89 @@ export default function ProjectPage() {
                 )}
               </tbody>
             </table>
+          </div>
+
+          {/* Quotes section */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mt-6">
+            <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+              <span className="text-sm font-semibold text-gray-700">הצעות מחיר</span>
+              <div className="flex items-center gap-2">
+                {quotesUploading && <span className="text-xs text-gray-400">Claude מנתח...</span>}
+                <input ref={quoteFileRef} type="file" accept=".pdf" className="hidden" onChange={handleQuoteUpload} />
+                <button
+                  onClick={() => quoteFileRef.current?.click()}
+                  disabled={quotesUploading}
+                  className="text-xs px-3 py-1.5 rounded text-white"
+                  style={{ background: "#011e41", opacity: quotesUploading ? 0.6 : 1 }}
+                >
+                  {quotesUploading ? "מנתח PDF..." : "העלאת הצעה (PDF)"}
+                </button>
+              </div>
+            </div>
+
+            {projectQuotes.length === 0 ? (
+              <div className="px-5 py-8 text-center text-gray-400 text-sm">אין הצעות מחיר עדיין — העלה PDF</div>
+            ) : (
+              <div className="divide-y divide-gray-50">
+                {projectQuotes.map(q => {
+                  const isExpanded = expandedQuoteId === q.id;
+                  const paid = q.milestones.filter(m => m.is_paid).reduce((s, m) => s + m.amount, 0);
+                  const unpaid = q.milestones.filter(m => !m.is_paid).reduce((s, m) => s + m.amount, 0);
+                  const statusColors: Record<string, string> = { pending_review: "#e67e22", approved: "#27ae60", rejected: "#c0392b" };
+                  const statusLabels: Record<string, string> = { pending_review: "ממתין לאישור", approved: "מאושר", rejected: "נדחה" };
+                  return (
+                    <div key={q.id}>
+                      <div
+                        className="px-5 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+                        onClick={() => setExpandedQuoteId(isExpanded ? null : q.id)}
+                      >
+                        <div>
+                          <span className="font-medium text-sm">{q.title}</span>
+                          {q.vendor && <span className="text-xs text-gray-400 mr-2">· {q.vendor}</span>}
+                          <span
+                            className="text-xs px-2 py-0.5 rounded-full mr-2"
+                            style={{ background: (statusColors[q.status] || "#888") + "20", color: statusColors[q.status] || "#888" }}
+                          >
+                            {statusLabels[q.status] || q.status}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          {q.total_amount != null && <span className="font-bold text-sm" style={{ color: "#011e41" }}>{fmt(q.total_amount)}</span>}
+                          <span className="text-gray-400 text-xs">{isExpanded ? "▲" : "▼"}</span>
+                        </div>
+                      </div>
+                      {isExpanded && q.milestones.length > 0 && (
+                        <div className="px-5 pb-3 space-y-1.5">
+                          {q.milestones.map(ms => (
+                            <div key={ms.id} className="flex items-center justify-between rounded-lg px-3 py-2 text-sm" style={{ background: ms.is_paid ? "#f0fdf4" : "#fafafa" }}>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={ms.is_paid === 1}
+                                  onChange={() => toggleMilestonePaid(q, ms)}
+                                  className="accent-green-600"
+                                />
+                                <span style={{ textDecoration: ms.is_paid ? "line-through" : "none", color: ms.is_paid ? "#aaa" : "#333" }}>
+                                  {ms.description}
+                                </span>
+                              </div>
+                              <div className="text-left">
+                                <div className="font-medium text-xs" style={{ color: ms.is_paid ? "#aaa" : "#011e41" }}>{fmt(ms.amount)}</div>
+                                {ms.due_date && <div className="text-xs text-gray-400">{new Date(ms.due_date).toLocaleDateString("he-IL")}</div>}
+                              </div>
+                            </div>
+                          ))}
+                          <div className="flex gap-4 text-xs pt-1">
+                            <span className="text-green-600">שולם: {fmt(paid)}</span>
+                            <span className="text-orange-500">נותר: {fmt(unpaid)}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
