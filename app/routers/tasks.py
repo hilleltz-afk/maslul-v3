@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
@@ -52,12 +52,15 @@ def read_task(tenant_id: UUID, task_id: UUID, db: Session = Depends(get_db)):
 
 
 @router.get("/", response_model=list[schemas.TaskRead])
-def list_tasks(tenant_id: UUID, db: Session = Depends(get_db)):
-    return (
-        db.query(models.Task)
-        .filter(models.Task.tenant_id == tenant_id, models.Task.deleted_at.is_(None))
-        .all()
-    )
+def list_tasks(
+    tenant_id: UUID,
+    project_id: UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    q = db.query(models.Task).filter(models.Task.tenant_id == tenant_id, models.Task.deleted_at.is_(None))
+    if project_id:
+        q = q.filter(models.Task.project_id == project_id)
+    return q.all()
 
 
 @router.put("/{task_id}", response_model=schemas.TaskRead)

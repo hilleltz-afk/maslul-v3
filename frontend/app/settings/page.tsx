@@ -103,6 +103,19 @@ export default function SettingsPage() {
   const isAdmin = myRole === "admin" || myRole === "super_admin";
   const isSuperAdmin = myRole === "super_admin";
 
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState("");
+  async function saveName() {
+    if (!me || !nameInput.trim()) return;
+    await apiFetch(`/tenants/${TENANT_ID}/users/${me.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ email: me.email, name: nameInput }),
+    });
+    setMe(prev => prev ? { ...prev, name: nameInput } : prev);
+    setUsers(prev => prev.map(u => u.id === me.id ? { ...u, name: nameInput } : u));
+    setEditingName(false);
+  }
+
   const pending  = users.filter(u => u.status === "pending");
   const active   = users.filter(u => u.status === "active");
   const rejected = users.filter(u => u.status === "rejected");
@@ -119,6 +132,47 @@ export default function SettingsPage() {
           </button>
         )}
       </div>
+
+      {/* My profile */}
+      {me && (
+        <div className="bg-white rounded-xl p-5 shadow-sm mb-6">
+          <div className="text-sm font-semibold text-gray-700 mb-3">הפרופיל שלי</div>
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full flex items-center justify-center text-white text-xl font-bold" style={{ background: "#011e41" }}>
+              {me.name[0]}
+            </div>
+            <div className="flex-1">
+              {editingName ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    autoFocus
+                    value={nameInput}
+                    onChange={e => setNameInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") saveName(); if (e.key === "Escape") setEditingName(false); }}
+                    className="border border-gray-200 rounded px-3 py-1.5 text-sm outline-none"
+                  />
+                  <button onClick={saveName} className="text-xs px-3 py-1.5 rounded text-white" style={{ background: "#011e41" }}>שמור</button>
+                  <button onClick={() => setEditingName(false)} className="text-xs text-gray-400 hover:text-gray-600">ביטול</button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-gray-800">{me.name}</span>
+                  <button
+                    onClick={() => { setNameInput(me.name); setEditingName(true); }}
+                    className="text-xs text-gray-400 hover:text-gray-600"
+                  >✏️</button>
+                </div>
+              )}
+              <div className="text-sm text-gray-400">{me.email}</div>
+            </div>
+            {roleBadge[me.role]?.text && (
+              <span className="text-xs px-2 py-1 rounded-full font-medium" style={{ background: roleBadge[me.role].bg, color: roleBadge[me.role].color }}>
+                {roleBadge[me.role].text}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Invite form */}
       {showInvite && (

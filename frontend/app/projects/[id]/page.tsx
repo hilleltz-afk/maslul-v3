@@ -67,6 +67,7 @@ export default function ProjectPage() {
   const [editingStageId, setEditingStageId] = useState<string | null>(null);
   const [editingStageName, setEditingStageName] = useState("");
   const [dragStageId, setDragStageId] = useState<string | null>(null);
+  const [stageMenu, setStageMenu] = useState<string | null>(null);
 
   // Budget state
   const [budgetEntries, setBudgetEntries] = useState<BudgetEntry[]>([]);
@@ -116,6 +117,13 @@ export default function ProjectPage() {
   useEffect(() => {
     if (tab === "budget") loadBudget();
   }, [tab]);
+
+  useEffect(() => {
+    if (!stageMenu) return;
+    const close = () => setStageMenu(null);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [stageMenu]);
 
   useEffect(() => {
     if (selectedTaskId) loadComments(selectedTaskId);
@@ -190,8 +198,12 @@ export default function ProjectPage() {
   }
 
   async function updateTask(taskId: string, data: Partial<Task>) {
-    await apiFetch(`/tenants/${TENANT_ID}/tasks/${taskId}`, { method: "PUT", body: JSON.stringify(data) });
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...data } : t));
+    try {
+      await apiFetch(`/tenants/${TENANT_ID}/tasks/${taskId}`, { method: "PUT", body: JSON.stringify(data) });
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...data } : t));
+    } catch (e: any) {
+      alert("שגיאה בשמירה: " + e.message);
+    }
   }
 
   async function updateStage(stageId: string, data: { name?: string; color?: string }) {
@@ -223,6 +235,12 @@ export default function ProjectPage() {
       localStorage.setItem(`stage_order_${projectId}`, JSON.stringify(prev.map(s => s.id)));
       return prev;
     });
+  }
+
+  async function deleteStage(stageId: string) {
+    if (!confirm("למחוק קבוצת משימות זו? המשימות בה לא יימחקו.")) return;
+    await apiFetch(`/tenants/${TENANT_ID}/stages/${stageId}`, { method: "DELETE" });
+    setStages(prev => prev.filter(s => s.id !== stageId));
   }
 
   async function addTask(stageId: string) {
@@ -337,7 +355,7 @@ export default function ProjectPage() {
                 className="mb-6"
                 onDragOver={e => handleStageDragOver(e, stage.id)}
               >
-                <div className="flex items-center gap-2 mb-1 select-none">
+                <div className="flex items-center gap-2 mb-1 select-none group/stage">
                   {/* Drag handle */}
                   <span
                     className="text-gray-300 cursor-grab text-xs px-0.5"
@@ -345,18 +363,9 @@ export default function ProjectPage() {
                     onDragStart={() => setDragStageId(stage.id)}
                     onDragEnd={handleStageDragEnd}
                   >⠿</span>
-                  {/* Color picker */}
-                  <div className="relative flex-shrink-0" style={{ width: 12, height: 20 }}>
-                    <div className="w-3 h-5 rounded-full" style={{ background: stage.color || "#011e41" }} />
-                    <input
-                      type="color"
-                      value={stage.color || "#011e41"}
-                      onChange={e => updateStage(stage.id, { color: e.target.value })}
-                      className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-                      title="שנה צבע"
-                    />
-                  </div>
-                  {/* Name - click to edit */}
+                  {/* Color dot */}
+                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: stage.color || "#011e41" }} />
+                  {/* Name - inline edit or label */}
                   {editingStageId === stage.id ? (
                     <input
                       autoFocus
@@ -374,15 +383,43 @@ export default function ProjectPage() {
                       style={{ color: stage.color || "#011e41", minWidth: 80 }}
                     />
                   ) : (
-                    <span
-                      className="font-semibold text-sm cursor-pointer hover:underline"
-                      style={{ color: stage.color || "#011e41" }}
-                      onClick={() => { setEditingStageId(stage.id); setEditingStageName(stage.name); }}
-                    >
-                      {stage.name}
-                    </span>
+                    <span className="font-semibold text-sm" style={{ color: stage.color || "#011e41" }}>{stage.name}</span>
                   )}
                   <span className="text-xs text-gray-400">({stageTasks.length})</span>
+
+                  {/* ⋮ menu */}
+                  <div className="relative mr-1">
+                    <button
+                      onClick={e => { e.stopPropagation(); setStageMenu(stageMenu === stage.id ? null : stage.id); }}
+                      className="opacity-0 group-hover/stage:opacity-100 text-gray-400 hover:text-gray-600 px-1 text-base leading-none"
+                    >⋮</button>
+                    {stageMenu === stage.id && (
+                      <div
+                        className="absolute right-0 top-6 bg-white shadow-xl rounded-lg border border-gray-200 z-50 py-1 min-w-40"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <button
+                          onClick={() => { setEditingStageId(stage.id); setEditingStageName(stage.name); setStageMenu(null); }}
+                          className="w-full text-right px-4 py-2 text-sm hover:bg-gray-50"
+                        >✏️ שינוי שם</button>
+                        <label className="w-full text-right px-4 py-2 text-sm hover:bg-gray-50 cursor-pointer flex items-center justify-between">
+                          <span>🎨 שינוי צבע</span>
+                          <input
+                            type="color"
+                            value={stage.color || "#011e41"}
+                            onChange={e => { updateStage(stage.id, { color: e.target.value }); }}
+                            className="w-6 h-6 cursor-pointer rounded"
+                          />
+                        </label>
+                        <hr className="my-1 border-gray-100" />
+                        <button
+                          onClick={() => { setStageMenu(null); deleteStage(stage.id); }}
+                          className="w-full text-right px-4 py-2 text-sm text-red-500 hover:bg-red-50"
+                        >🗑️ מחיקת קבוצה</button>
+                      </div>
+                    )}
+                  </div>
+
                   <span
                     className="text-xs text-gray-400 mr-auto cursor-pointer"
                     onClick={() => setCollapsed(p => ({ ...p, [stage.id]: !p[stage.id] }))}
