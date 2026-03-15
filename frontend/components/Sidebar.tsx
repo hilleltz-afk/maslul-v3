@@ -57,6 +57,7 @@ export default function Sidebar() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [tenantId, setTenantId] = useState("");
+  const [expiringDocs, setExpiringDocs] = useState(0);
 
   // Search
   const [searchQ, setSearchQ] = useState("");
@@ -76,6 +77,9 @@ export default function Sidebar() {
           setPendingCount(users.filter((u: any) => u.status === "pending").length);
         }).catch(() => {});
       }
+      apiFetch(`/tenants/${me.tenant_id}/documents/expiring?days=30`)
+        .then((docs: any[]) => setExpiringDocs(docs.length))
+        .catch(() => {});
     }).catch(() => {});
   }, []);
 
@@ -242,7 +246,12 @@ export default function Sidebar() {
       {/* Bottom nav */}
       <div className="border-t border-white/10 py-2">
         {bottomNavItems.map(item => (
-          <NavLink key={item.href} {...item} pathname={pathname} />
+          <NavLink
+            key={item.href}
+            {...item}
+            pathname={pathname}
+            badge={item.href === "/documents" ? expiringDocs : undefined}
+          />
         ))}
 
         {isAdmin && (

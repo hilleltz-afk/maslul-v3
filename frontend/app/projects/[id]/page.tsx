@@ -63,6 +63,14 @@ export default function ProjectPage() {
   // Contacts
   const [contacts, setContacts] = useState<Contact[]>([]);
 
+  // Project settings
+  const [showProjectSettings, setShowProjectSettings] = useState(false);
+  const [projectForm, setProjectForm] = useState({ name: "", gush: "", helka: "", address: "", budget_total: "" });
+  const [savingProject, setSavingProject] = useState(false);
+
+  // Task detail panel
+  const [taskPanel, setTaskPanel] = useState<string | null>(null);
+
   // Stage editing
   const [editingStageId, setEditingStageId] = useState<string | null>(null);
   const [editingStageName, setEditingStageName] = useState("");
@@ -243,6 +251,25 @@ export default function ProjectPage() {
     setStages(prev => prev.filter(s => s.id !== stageId));
   }
 
+  async function saveProjectSettings() {
+    setSavingProject(true);
+    try {
+      const updated = await apiFetch(`/tenants/${TENANT_ID}/projects/${projectId}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          name: projectForm.name,
+          gush: projectForm.gush,
+          helka: projectForm.helka,
+          address: projectForm.address || undefined,
+          budget_total: projectForm.budget_total ? parseFloat(projectForm.budget_total) : undefined,
+        }),
+      });
+      setProject(updated);
+      setShowProjectSettings(false);
+    } catch (e: any) { alert(e.message); }
+    finally { setSavingProject(false); }
+  }
+
   async function addTask(stageId: string) {
     if (!newTaskTitle.trim()) return;
     const task = await apiFetch(`/tenants/${TENANT_ID}/tasks/`, {
@@ -315,8 +342,47 @@ export default function ProjectPage() {
         <button onClick={() => router.push("/projects")} className="text-gray-400 hover:text-gray-600 text-sm">→ פרויקטים</button>
         <span className="text-gray-300">/</span>
         <h1 className="text-xl font-bold" style={{ color: "#011e41" }}>{project.name}</h1>
-        <span className="text-xs text-gray-400 mr-auto">גוש {project.gush} חלקה {project.helka}</span>
+        <span className="text-xs text-gray-400">גוש {project.gush} חלקה {project.helka}</span>
+        <button
+          onClick={() => { setProjectForm({ name: project.name, gush: project.gush, helka: project.helka, address: project.address || "", budget_total: project.budget_total?.toString() || "" }); setShowProjectSettings(true); }}
+          className="mr-auto text-gray-400 hover:text-gray-600 text-sm px-2 py-1 rounded hover:bg-gray-100"
+          title="הגדרות פרויקט"
+        >⚙</button>
       </div>
+
+      {/* Project settings modal */}
+      {showProjectSettings && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowProjectSettings(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-4" style={{ color: "#011e41" }}>הגדרות פרויקט</h2>
+            <div className="flex flex-col gap-3">
+              {[
+                { key: "name", label: "שם הפרויקט" },
+                { key: "gush", label: "גוש" },
+                { key: "helka", label: "חלקה" },
+                { key: "address", label: "כתובת" },
+                { key: "budget_total", label: "תקציב כולל (₪)", type: "number" },
+              ].map(({ key, label, type }) => (
+                <div key={key}>
+                  <label className="text-xs text-gray-500 mb-1 block">{label}</label>
+                  <input
+                    type={type || "text"}
+                    value={(projectForm as any)[key]}
+                    onChange={e => setProjectForm(p => ({ ...p, [key]: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-300"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2 mt-5 justify-end">
+              <button onClick={() => setShowProjectSettings(false)} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">ביטול</button>
+              <button onClick={saveProjectSettings} disabled={savingProject} className="px-4 py-2 rounded-lg text-sm text-white font-medium" style={{ background: "#011e41", opacity: savingProject ? 0.6 : 1 }}>
+                {savingProject ? "שומר..." : "שמור"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-0 border-b border-gray-200 bg-white px-8 flex-shrink-0 items-center">
@@ -455,17 +521,10 @@ export default function ProjectPage() {
 
                           {/* Title */}
                           <div className="flex items-center px-2 py-1.5 border-r border-gray-100" style={{ width: getW("title"), minWidth: getW("title") }}>
-                            {editingTask === task.id + "_title" ? (
-                              <input
-                                autoFocus
-                                defaultValue={task.title}
-                                className="w-full text-sm outline-none border-b border-blue-400"
-                                onBlur={e => { updateTask(task.id, { title: e.target.value }); setEditingTask(null); }}
-                                onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                              />
-                            ) : (
-                              <span className="truncate cursor-pointer hover:text-blue-600" onClick={() => setEditingTask(task.id + "_title")}>{task.title}</span>
-                            )}
+                            <span
+                              className="truncate cursor-pointer hover:text-blue-600"
+                              onClick={() => { setTaskPanel(task.id); setSelectedTaskId(task.id); }}
+                            >{task.title}</span>
                           </div>
 
                           {/* Assignee */}
@@ -994,6 +1053,154 @@ export default function ProjectPage() {
           </div>
         </div>
       )}
+
+      {/* Task detail panel */}
+      {taskPanel && (() => {
+        const t = tasks.find(x => x.id === taskPanel);
+        if (!t) return null;
+        const stg = stages.find(s => s.id === t.stage_id);
+        return (
+          <div className="fixed inset-0 z-50 flex" dir="rtl">
+            <div className="flex-1 bg-black/20" onClick={() => setTaskPanel(null)} />
+            <div className="w-[420px] bg-white h-full flex flex-col shadow-2xl border-r border-gray-200 overflow-hidden">
+              {/* Panel header */}
+              <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
+                <span className="text-sm font-semibold text-gray-700">פרטי משימה</span>
+                <button onClick={() => setTaskPanel(null)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+                {/* Title */}
+                <div>
+                  <label className="text-xs text-gray-400 mb-1 block">כותרת</label>
+                  <input
+                    defaultValue={t.title}
+                    onBlur={e => { if (e.target.value !== t.title) updateTask(t.id, { title: e.target.value }); }}
+                    className="w-full text-base font-semibold border-b border-gray-200 pb-1 outline-none focus:border-blue-400"
+                    style={{ color: "#011e41" }}
+                  />
+                </div>
+
+                {/* Stage */}
+                {stg && (
+                  <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ background: stg.color || "#011e41" }} />
+                    <span className="text-xs text-gray-500">{stg.name}</span>
+                  </div>
+                )}
+
+                {/* Status + Priority */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">סטטוס</label>
+                    <select
+                      value={t.status}
+                      onChange={e => updateTask(t.id, { status: e.target.value })}
+                      className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none"
+                    >
+                      {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">עדיפות</label>
+                    <select
+                      value={t.priority}
+                      onChange={e => updateTask(t.id, { priority: e.target.value })}
+                      className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none"
+                    >
+                      {PRIORITY_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Assignee + Contact */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">איש צוות</label>
+                    <select
+                      value={t.assignee_id || ""}
+                      onChange={e => updateTask(t.id, { assignee_id: e.target.value || undefined })}
+                      className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none"
+                    >
+                      <option value="">—</option>
+                      {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">גורם מטפל</label>
+                    <select
+                      value={t.contact_id || ""}
+                      onChange={e => updateTask(t.id, { contact_id: e.target.value || undefined })}
+                      className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none"
+                    >
+                      <option value="">—</option>
+                      {contacts.map(c => <option key={c.id} value={c.id}>{c.name}{c.profession ? ` (${c.profession})` : ""}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Dates */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">תאריך התחלה</label>
+                    <input
+                      type="date"
+                      value={t.start_date ? t.start_date.slice(0, 10) : ""}
+                      onChange={e => updateTask(t.id, { start_date: e.target.value || undefined })}
+                      className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">תאריך סיום</label>
+                    <input
+                      type="date"
+                      value={t.end_date ? t.end_date.slice(0, 10) : ""}
+                      onChange={e => updateTask(t.id, { end_date: e.target.value || undefined })}
+                      className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Description */}
+                <div>
+                  <label className="text-xs text-gray-400 mb-1 block">הערות</label>
+                  <textarea
+                    defaultValue={t.description || ""}
+                    onBlur={e => { if (e.target.value !== (t.description || "")) updateTask(t.id, { description: e.target.value }); }}
+                    rows={3}
+                    placeholder="הוסף הערה..."
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-blue-300 resize-none"
+                  />
+                </div>
+
+                {/* Comments */}
+                <div>
+                  <label className="text-xs text-gray-400 mb-2 block">תגובות</label>
+                  <div className="space-y-2 max-h-48 overflow-y-auto mb-2">
+                    {comments.length === 0 && <div className="text-xs text-gray-300 py-2">אין תגובות עדיין</div>}
+                    {comments.map(c => (
+                      <div key={c.id} className="bg-gray-50 rounded-lg px-3 py-2">
+                        <div className="text-sm text-gray-700 whitespace-pre-wrap">{c.content}</div>
+                        <div className="text-xs text-gray-400 mt-0.5">{new Date(c.created_at).toLocaleString("he-IL")}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      value={newComment}
+                      onChange={e => setNewComment(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendComment(); } }}
+                      placeholder="כתוב תגובה..."
+                      className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-blue-300"
+                    />
+                    <button onClick={sendComment} className="px-3 py-2 rounded-lg text-white text-sm" style={{ background: "#011e41" }}>שלח</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
