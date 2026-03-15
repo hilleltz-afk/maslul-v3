@@ -37,7 +37,7 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div>
+    <div className="p-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold" style={{ color: "#011e41" }}>פרויקטים</h1>
         <button onClick={() => setCreating(true)} className="px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ background: "#011e41" }}>
@@ -77,7 +77,7 @@ export default function ProjectsPage() {
                 <div className="font-semibold text-lg" style={{ color: "#011e41" }}>{p.name}</div>
                 <div className="text-xs text-gray-400 mt-0.5">גוש {p.gush} · חלקה {p.helka}</div>
               </div>
-              {(myRole === "super_admin") && (
+              {(myRole === "super_admin" || myRole === "admin") && (
                 <button
                   onClick={e => { e.stopPropagation(); deleteProject(p.id, p.name); }}
                   className="opacity-0 group-hover:opacity-100 text-xs text-red-400 hover:text-red-600 px-2 py-1 rounded transition-opacity"

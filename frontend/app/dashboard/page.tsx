@@ -76,9 +76,8 @@ export default function DashboardPage() {
 
   const cards = stats ? [
     { label: "פרויקטים", value: stats.projects, href: "/projects", color: "#011e41", sub: null },
-    { label: "משימות פעילות", value: stats.tasksInProgress, href: "/tasks", color: "#2980b9", sub: `${stats.tasksDone} הושלמו` },
-    { label: "משימות באיחור", value: stats.tasksOverdue, href: "/tasks", color: stats.tasksOverdue > 0 ? "#c0392b" : "#7f8c8d", sub: stats.tasksOverdue > 0 ? "דורש טיפול" : "הכל בסדר" },
-    { label: "אנשי קשר", value: stats.contacts, href: "/contacts", color: "#2d6aa4", sub: null },
+    { label: "משימות פעילות", value: stats.tasksInProgress, href: "/projects", color: "#2980b9", sub: `${stats.tasksDone} הושלמו` },
+    { label: "משימות באיחור", value: stats.tasksOverdue, href: "/projects", color: stats.tasksOverdue > 0 ? "#c0392b" : "#7f8c8d", sub: stats.tasksOverdue > 0 ? "דורש טיפול" : "הכל בסדר" },
     { label: "מסמכים פגי תוקף", value: stats.expiring, href: "/documents", color: stats.expiring > 0 ? "#e67e22" : "#7f8c8d", sub: stats.expiring > 0 ? "לחידוש" : "הכל תקין" },
     { label: "מיילים ממתינים", value: stats.pipeline, href: "/pipeline", color: stats.pipeline > 0 ? "#a4742d" : "#7f8c8d", sub: stats.pipeline > 0 ? "לאישור" : "אין חדש" },
   ] : [];
@@ -100,7 +99,7 @@ export default function DashboardPage() {
       ) : (
         <>
           {/* Stat cards */}
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 mb-8">
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 mb-6">
             {cards.map((card) => (
               <a
                 key={card.label}
@@ -115,6 +114,45 @@ export default function DashboardPage() {
               </a>
             ))}
           </div>
+
+          {/* Task progress chart */}
+          {stats && stats.tasks > 0 && (() => {
+            const total = stats.tasks;
+            const bars = [
+              { label: "הושלם", count: stats.tasksDone, color: "#27ae60" },
+              { label: "בעבודה", count: stats.tasksInProgress, color: "#2980b9" },
+              { label: "באיחור", count: stats.tasksOverdue, color: "#c0392b" },
+              { label: "שאר", count: Math.max(0, total - stats.tasksDone - stats.tasksInProgress), color: "#e0e0e0" },
+            ];
+            const donePct = Math.round((stats.tasksDone / total) * 100);
+            return (
+              <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 mb-6">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-semibold" style={{ color: "#011e41" }}>התקדמות משימות</span>
+                  <span className="text-sm font-bold" style={{ color: "#27ae60" }}>{donePct}% הושלמו</span>
+                </div>
+                {/* Stacked bar */}
+                <div className="w-full h-4 rounded-full overflow-hidden bg-gray-100 flex mb-3">
+                  {bars.filter(b => b.count > 0).map(b => (
+                    <div
+                      key={b.label}
+                      style={{ width: `${(b.count / total) * 100}%`, background: b.color }}
+                      title={`${b.label}: ${b.count}`}
+                    />
+                  ))}
+                </div>
+                {/* Legend */}
+                <div className="flex gap-4 flex-wrap">
+                  {bars.filter(b => b.count > 0).map(b => (
+                    <div key={b.label} className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: b.color }} />
+                      <span className="text-xs text-gray-500">{b.label} ({b.count})</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Overdue tasks */}
           {overdueTasks.length > 0 && (

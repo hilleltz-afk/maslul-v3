@@ -159,7 +159,7 @@ export default function ProjectPage() {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      await apiUpload(`/tenants/${TENANT_ID}/quotes/upload`, fd);
+      await apiUpload(`/tenants/${TENANT_ID}/quotes/upload?project_id=${projectId}`, fd);
       await loadBudget();
     } catch (err: any) {
       alert(err.message || "שגיאה בהעלאה");
@@ -283,14 +283,36 @@ export default function ProjectPage() {
 
   async function addBudgetEntry() {
     if (!newEntry.description.trim() || !newEntry.amount) return;
-    const entry = await apiFetch(`/tenants/${TENANT_ID}/projects/${projectId}/budget/`, {
-      method: "POST",
-      body: JSON.stringify({ ...newEntry, amount: parseFloat(newEntry.amount), is_planned: parseInt(newEntry.is_planned) }),
-    });
-    setBudgetEntries(prev => [...prev, entry]);
-    setNewEntry({ category: "בנייה", description: "", vendor: "", amount: "", is_planned: "0", notes: "" });
-    setShowAddEntry(false);
-    loadBudget();
+    try {
+      const entry = await apiFetch(`/tenants/${TENANT_ID}/projects/${projectId}/budget/`, {
+        method: "POST",
+        body: JSON.stringify({
+          category: newEntry.category,
+          description: newEntry.description,
+          vendor: newEntry.vendor || undefined,
+          amount: parseFloat(newEntry.amount),
+          is_planned: parseInt(newEntry.is_planned),
+          notes: newEntry.notes || undefined,
+        }),
+      });
+      setBudgetEntries(prev => [...prev, entry]);
+      setNewEntry({ category: "בנייה", description: "", vendor: "", amount: "", is_planned: "0", notes: "" });
+      setShowAddEntry(false);
+      loadBudget();
+    } catch (e: any) {
+      alert("שגיאה בשמירת רשומת תקציב: " + e.message);
+    }
+  }
+
+  async function deleteTask(taskId: string, title: string) {
+    if (!confirm(`למחוק את המשימה "${title}"?`)) return;
+    try {
+      await apiFetch(`/tenants/${TENANT_ID}/tasks/${taskId}`, { method: "DELETE" });
+      setTasks(prev => prev.filter(t => t.id !== taskId));
+      if (taskPanel === taskId) setTaskPanel(null);
+    } catch (e: any) {
+      alert("שגיאה במחיקה: " + e.message);
+    }
   }
 
   async function deleteBudgetEntry(id: string) {
@@ -449,7 +471,11 @@ export default function ProjectPage() {
                       style={{ color: stage.color || "#011e41", minWidth: 80 }}
                     />
                   ) : (
-                    <span className="font-semibold text-sm" style={{ color: stage.color || "#011e41" }}>{stage.name}</span>
+                    <span
+                      className="font-semibold text-sm cursor-pointer hover:opacity-70"
+                      style={{ color: stage.color || "#011e41" }}
+                      onClick={e => { e.stopPropagation(); setStageMenu(stageMenu === stage.id ? null : stage.id); }}
+                    >{stage.name}</span>
                   )}
                   <span className="text-xs text-gray-400">({stageTasks.length})</span>
 
@@ -611,14 +637,21 @@ export default function ProjectPage() {
                             )}
                           </div>
 
-                          {/* Comments icon */}
-                          <div className="px-2 py-1.5 w-10 flex items-center justify-center">
+                          {/* Comments + Delete icons */}
+                          <div className="px-2 py-1.5 flex items-center gap-1">
                             <button
                               onClick={() => { setSelectedTaskId(task.id); setTab("comments"); }}
                               className="text-gray-300 hover:text-blue-500 text-base"
                               title="הערות"
                             >
                               💬
+                            </button>
+                            <button
+                              onClick={() => deleteTask(task.id, task.title)}
+                              className="text-gray-200 hover:text-red-500 opacity-0 group-hover:opacity-100 text-xs px-1"
+                              title="מחק משימה"
+                            >
+                              ✕
                             </button>
                           </div>
                         </div>
@@ -1066,7 +1099,16 @@ export default function ProjectPage() {
               {/* Panel header */}
               <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
                 <span className="text-sm font-semibold text-gray-700">פרטי משימה</span>
-                <button onClick={() => setTaskPanel(null)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => deleteTask(t.id, t.title)}
+                    className="text-xs text-red-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50"
+                    title="מחק משימה"
+                  >
+                    מחק
+                  </button>
+                  <button onClick={() => setTaskPanel(null)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
+                </div>
               </div>
 
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">

@@ -156,6 +156,7 @@ def get_quote(tenant_id: UUID, quote_id: UUID, db: Session = Depends(get_db)):
 async def upload_quote(
     tenant_id: UUID,
     file: UploadFile = File(...),
+    project_id: Optional[UUID] = None,
     db: Session = Depends(get_db),
     user_id: str | None = Depends(get_current_user_id),
 ):
@@ -182,17 +183,20 @@ async def upload_quote(
     # צור Quote
     now = datetime.now(timezone.utc)
     quote_id = uuid.uuid4()
-    project_id_val = extracted.get("project_id")
 
-    # וודא ש-project_id תקין
-    if project_id_val:
-        try:
-            pid = uuid.UUID(str(project_id_val))
-            exists = db.query(models.Project).filter(models.Project.id == pid).first()
-            if not exists:
+    # project_id מפרמטר מנצח את הניחוש של ה-AI
+    if project_id:
+        project_id_val = project_id
+    else:
+        project_id_val = extracted.get("project_id")
+        if project_id_val:
+            try:
+                pid = uuid.UUID(str(project_id_val))
+                exists = db.query(models.Project).filter(models.Project.id == pid).first()
+                if not exists:
+                    project_id_val = None
+            except Exception:
                 project_id_val = None
-        except Exception:
-            project_id_val = None
 
     quote = models.Quote(
         id=quote_id,
