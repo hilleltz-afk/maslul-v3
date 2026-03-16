@@ -27,7 +27,9 @@
       "Bash(\"d:/Users/hillel_tz/Desktop/maslul-v3/requirements.txt\")",
       "Bash(python3 -c \":*)",
       "Bash(python -c \":*)",
-      "Bash(railway --version)"
+      "Bash(railway --version)",
+      "Bash(sed -i 's|href={`\\\\${API_BASE}\\\\${doc\\\\.path}`}|href={doc.path.startsWith\\(\"\"http\"\"\\) ? doc.path : `${API_BASE}${doc.path}`}|g' \"frontend/app/projects/[id]/page.tsx\")",
+      "Bash(sed -i 's|href={`\\\\${API_BASE}\\\\${d\\\\.path}`}|href={d.path.startsWith\\(\"\"http\"\"\\) ? d.path : `${API_BASE}${d.path}`}|g' \"frontend/app/documents/page.tsx\")"
     ]
   }
 }

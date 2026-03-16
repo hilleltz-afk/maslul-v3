@@ -1105,7 +1105,7 @@ export default function ProjectPage() {
                     <span className="text-xl flex-shrink-0">📄</span>
                     <div className="flex-1 min-w-0">
                       <a
-                        href={`${API_BASE}${doc.path}`}
+                        href={doc.path.startsWith("http") ? doc.path : `${API_BASE}${doc.path}`}
                         target="_blank"
                         rel="noreferrer"
                         className="text-sm font-medium hover:underline"
@@ -1348,7 +1348,7 @@ export default function ProjectPage() {
                         <div key={doc.id} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 group">
                           <span className="text-base">📄</span>
                           <a
-                            href={`${API_BASE}${doc.path}`}
+                            href={doc.path.startsWith("http") ? doc.path : `${API_BASE}${doc.path}`}
                             target="_blank"
                             rel="noreferrer"
                             className="flex-1 text-xs text-blue-600 hover:underline truncate"

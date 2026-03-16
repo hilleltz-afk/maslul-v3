@@ -68,7 +68,7 @@ export default function DocumentsPage() {
                 <div className="text-2xl">📄</div>
                 <div className="flex-1 min-w-0">
                   <a
-                    href={`${API_BASE}${d.path}`}
+                    href={d.path.startsWith("http") ? d.path : `${API_BASE}${d.path}`}
                     target="_blank"
                     rel="noreferrer"
                     className="font-medium hover:underline"

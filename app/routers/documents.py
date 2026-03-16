@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
-from .. import crud, models, schemas
+from .. import crud, models, schemas, storage
 from ..deps import get_current_user_id, get_db
 
 router = APIRouter(prefix="/tenants/{tenant_id}/documents", tags=["documents"])
@@ -42,11 +42,16 @@ async def upload_document(
     user_id: str | None = Depends(get_current_user_id),
 ):
     content = await file.read()
-    ext = os.path.splitext(file.filename or "")[1]
-    stored_name = f"{uuid_lib.uuid4()}{ext}"
-    file_path = os.path.join(UPLOAD_DIR, stored_name)
-    with open(file_path, "wb") as f:
-        f.write(content)
+    filename = file.filename or "file"
+
+    if storage.r2_configured():
+        file_url = storage.upload_file(content, filename)
+    else:
+        ext = os.path.splitext(filename)[1]
+        stored_name = f"{uuid_lib.uuid4()}{ext}"
+        with open(os.path.join(UPLOAD_DIR, stored_name), "wb") as f:
+            f.write(content)
+        file_url = f"/uploads/{stored_name}"
 
     expiry_dt = None
     if expiry_date:
@@ -60,8 +65,8 @@ async def upload_document(
         tenant_id=str(tenant_id),
         project_id=project_id or None,
         task_id=task_id or None,
-        name=file.filename or stored_name,
-        path=f"/uploads/{stored_name}",
+        name=filename,
+        path=file_url,
         expiry_date=expiry_dt,
         created_by=user_id,
     )
@@ -175,6 +180,7 @@ def delete_document(
     changed_by: str | None = Depends(get_current_user_id),
 ):
     document = _get_document_or_404(db, tenant_id, document_id)
+    storage.delete_file(document.path)
     crud.soft_delete_entity(db, document, changed_by=changed_by)
     db.commit()
     return None
