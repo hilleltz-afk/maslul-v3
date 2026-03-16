@@ -525,7 +525,7 @@ export default function ProjectPage() {
                     <div className="flex bg-gray-50 border-b border-gray-200 text-xs text-gray-500 font-medium select-none">
                       <div style={{ width: 32, minWidth: 32 }} />
                       {columns.map((col) => (
-                        <div key={col.key} className="relative flex items-center px-3 py-2 border-r border-gray-200" style={{ width: getW(col.key), minWidth: getW(col.key) }}>
+                        <div key={col.key} className="relative flex items-center px-3 py-2 border-r border-gray-200" style={col.key === "notes" ? { minWidth: getW(col.key), flex: 1 } : { width: getW(col.key), minWidth: getW(col.key) }}>
                           {col.label}
                           <div
                             className="absolute left-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-300 opacity-0 hover:opacity-100"
@@ -622,7 +622,7 @@ export default function ProjectPage() {
                           </div>
 
                           {/* Notes */}
-                          <div className="px-2 py-1.5 border-r border-gray-100" style={{ width: getW("notes"), minWidth: getW("notes") }}>
+                          <div className="px-2 py-1.5 border-r border-gray-100" style={{ minWidth: getW("notes"), flex: 1 }}>
                             {editingTask === task.id + "_notes" ? (
                               <input
                                 autoFocus
