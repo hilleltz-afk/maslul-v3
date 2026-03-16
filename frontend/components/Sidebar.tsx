@@ -8,8 +8,11 @@ import { apiFetch } from "@/lib/api";
 const mainNavItems = [
   { href: "/dashboard", label: "דשבורד", icon: "⊞" },
   { href: "/projects", label: "פרויקטים", icon: "🏗" },
+  { href: "/tasks", label: "משימות", icon: "✓" },
+  { href: "/calendar", label: "לוח שנה", icon: "📅" },
   { href: "/budget", label: "תקציב", icon: "₪" },
   { href: "/pipeline", label: "Pipeline AI", icon: "✉" },
+  { href: "/ai", label: "AI עוזר", icon: "✨" },
 ];
 
 const bottomNavItems = [
@@ -23,13 +26,14 @@ interface SearchResult {
   address?: string; status?: string; project_id?: string; email?: string; profession?: string;
 }
 
-function NavLink({ href, label, icon, pathname, badge }: {
-  href: string; label: string; icon: string; pathname: string; badge?: number;
+function NavLink({ href, label, icon, pathname, badge, onClick }: {
+  href: string; label: string; icon: string; pathname: string; badge?: number; onClick?: () => void;
 }) {
   const active = pathname === href || pathname.startsWith(href + "/");
   return (
     <Link
       href={href}
+      onClick={onClick}
       className="flex items-center gap-3 px-6 py-3 text-sm transition-colors"
       style={{
         color: active ? "#fcd562" : "rgba(255,255,255,0.75)",
@@ -58,6 +62,8 @@ export default function Sidebar() {
   const [pendingCount, setPendingCount] = useState(0);
   const [tenantId, setTenantId] = useState("");
   const [expiringDocs, setExpiringDocs] = useState(0);
+  const [overdueTasks, setOverdueTasks] = useState(0);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   // Search
   const [searchQ, setSearchQ] = useState("");
@@ -65,6 +71,11 @@ export default function Sidebar() {
   const [searchLoading, setSearchLoading] = useState(false);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
+
+  // Close mobile sidebar on route change
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -79,6 +90,10 @@ export default function Sidebar() {
       }
       apiFetch(`/tenants/${me.tenant_id}/documents/expiring?days=30`)
         .then((docs: any[]) => setExpiringDocs(docs.length))
+        .catch(() => {});
+      const today = new Date().toISOString().slice(0, 10);
+      apiFetch(`/tenants/${me.tenant_id}/tasks/`)
+        .then((ts: any[]) => setOverdueTasks(ts.filter((t: any) => t.end_date && t.end_date.slice(0, 10) < today && t.status !== "done").length))
         .catch(() => {});
     }).catch(() => {});
   }, []);
@@ -129,151 +144,192 @@ export default function Sidebar() {
     ? searchResults.projects.length + searchResults.tasks.length + searchResults.contacts.length + searchResults.documents.length
     : 0;
 
+  const closeDrawer = () => setMobileOpen(false);
+
   return (
-    <aside
-      className="fixed top-0 right-0 h-screen w-56 flex flex-col z-40"
-      style={{ background: "#011e41" }}
-    >
-      {/* Logo */}
-      <div className="px-6 py-6 border-b border-white/10">
-        <div className="text-white font-bold text-lg leading-tight">Hadas Capital</div>
-        <div className="text-xs mt-0.5" style={{ color: "#fcd562" }}>מסלול</div>
-      </div>
+    <>
+      {/* Mobile hamburger button */}
+      <button
+        className="fixed top-4 right-4 z-50 md:hidden flex items-center justify-center w-10 h-10 rounded-xl shadow-lg"
+        style={{ background: "#011e41" }}
+        onClick={() => setMobileOpen(o => !o)}
+        aria-label="תפריט"
+      >
+        <span className="text-white text-lg">{mobileOpen ? "✕" : "☰"}</span>
+      </button>
 
-      {/* Search */}
-      <div className="px-4 py-3 border-b border-white/10 relative" ref={searchRef}>
-        <input
-          type="text"
-          value={searchQ}
-          onChange={e => setSearchQ(e.target.value)}
-          placeholder="חיפוש..."
-          className="w-full bg-white/10 text-white placeholder-white/40 text-sm rounded-lg px-3 py-2 outline-none focus:bg-white/15"
-          dir="rtl"
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          onClick={closeDrawer}
         />
-        {searchQ.length > 0 && (
+      )}
+
+      {/* Sidebar */}
+      <aside
+        className={`fixed top-0 right-0 h-screen w-56 flex flex-col z-40 transition-transform duration-300
+          ${mobileOpen ? "translate-x-0" : "translate-x-full md:translate-x-0"}
+        `}
+        style={{ background: "#011e41" }}
+      >
+        {/* Logo */}
+        <div className="px-6 py-6 border-b border-white/10">
+          <div className="text-white font-bold text-lg leading-tight">Hadas Capital</div>
+          <div className="text-xs mt-0.5" style={{ color: "#fcd562" }}>מסלול</div>
+        </div>
+
+        {/* Search */}
+        <div className="px-4 py-3 border-b border-white/10 relative" ref={searchRef}>
+          <input
+            type="text"
+            value={searchQ}
+            onChange={e => setSearchQ(e.target.value)}
+            placeholder="חיפוש..."
+            className="w-full bg-white/10 text-white placeholder-white/40 text-sm rounded-lg px-3 py-2 outline-none focus:bg-white/15"
+            dir="rtl"
+          />
+          {searchQ.length > 0 && (
+            <button
+              onClick={() => { setSearchQ(""); setSearchResults(null); }}
+              className="absolute left-6 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/70 text-xs mt-px"
+            >
+              ✕
+            </button>
+          )}
+
+          {/* Search dropdown */}
+          {(searchResults || searchLoading) && (
+            <div
+              className="absolute top-full right-0 w-72 bg-white rounded-xl shadow-2xl border border-gray-100 z-50 overflow-hidden"
+              style={{ marginTop: 4 }}
+            >
+              {searchLoading && (
+                <div className="px-4 py-3 text-sm text-gray-400">מחפש...</div>
+              )}
+              {!searchLoading && searchResults && totalResults === 0 && (
+                <div className="px-4 py-3 text-sm text-gray-400">אין תוצאות</div>
+              )}
+              {!searchLoading && searchResults && totalResults > 0 && (
+                <div className="max-h-80 overflow-y-auto" dir="rtl">
+                  {searchResults.projects.length > 0 && (
+                    <div>
+                      <div className="px-3 py-1.5 text-xs font-semibold text-gray-400 bg-gray-50">פרויקטים</div>
+                      {searchResults.projects.map(r => (
+                        <button key={r.id} onClick={() => navigateTo(r)}
+                          className="w-full text-right px-3 py-2 hover:bg-blue-50 flex items-start gap-2">
+                          <span className="text-sm">🏗</span>
+                          <div>
+                            <div className="text-sm font-medium text-gray-800">{r.name}</div>
+                            {r.address && <div className="text-xs text-gray-400">{r.address}</div>}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {searchResults.tasks.length > 0 && (
+                    <div>
+                      <div className="px-3 py-1.5 text-xs font-semibold text-gray-400 bg-gray-50">משימות</div>
+                      {searchResults.tasks.map(r => (
+                        <button key={r.id} onClick={() => navigateTo(r)}
+                          className="w-full text-right px-3 py-2 hover:bg-blue-50 flex items-start gap-2">
+                          <span className="text-sm">✓</span>
+                          <div>
+                            <div className="text-sm font-medium text-gray-800">{r.title}</div>
+                            <div className="text-xs text-gray-400">{r.status}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {searchResults.contacts.length > 0 && (
+                    <div>
+                      <div className="px-3 py-1.5 text-xs font-semibold text-gray-400 bg-gray-50">אנשי קשר</div>
+                      {searchResults.contacts.map(r => (
+                        <button key={r.id} onClick={() => navigateTo(r)}
+                          className="w-full text-right px-3 py-2 hover:bg-blue-50 flex items-start gap-2">
+                          <span className="text-sm">👤</span>
+                          <div>
+                            <div className="text-sm font-medium text-gray-800">{r.name}</div>
+                            {r.profession && <div className="text-xs text-gray-400">{r.profession}</div>}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {searchResults.documents.length > 0 && (
+                    <div>
+                      <div className="px-3 py-1.5 text-xs font-semibold text-gray-400 bg-gray-50">מסמכים</div>
+                      {searchResults.documents.map(r => (
+                        <button key={r.id} onClick={() => navigateTo(r)}
+                          className="w-full text-right px-3 py-2 hover:bg-blue-50 flex items-start gap-2">
+                          <span className="text-sm">📄</span>
+                          <div className="text-sm font-medium text-gray-800">{r.name}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Main nav */}
+        <nav className="flex-1 py-4 overflow-y-auto">
+          {mainNavItems.map(item => (
+            <NavLink
+              key={item.href}
+              {...item}
+              pathname={pathname}
+              badge={item.href === "/tasks" ? overdueTasks : undefined}
+              onClick={closeDrawer}
+            />
+          ))}
+        </nav>
+
+        {/* Bottom nav */}
+        <div className="border-t border-white/10 py-2">
+          {bottomNavItems.map(item => (
+            <NavLink
+              key={item.href}
+              {...item}
+              pathname={pathname}
+              badge={item.href === "/documents" ? expiringDocs : undefined}
+              onClick={closeDrawer}
+            />
+          ))}
+
+          {isAdmin && (
+            <NavLink
+              href="/settings"
+              label="הגדרות"
+              icon="⚙"
+              pathname={pathname}
+              badge={pendingCount}
+              onClick={closeDrawer}
+            />
+          )}
+        </div>
+
+        {/* Profile + Logout */}
+        <div className="px-6 py-4 border-t border-white/10 flex items-center justify-between">
+          <Link
+            href="/profile"
+            onClick={closeDrawer}
+            className="text-sm transition-colors"
+            style={{ color: "rgba(255,255,255,0.6)" }}
+          >
+            הפרופיל שלי
+          </Link>
           <button
-            onClick={() => { setSearchQ(""); setSearchResults(null); }}
-            className="absolute left-6 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/70 text-xs mt-px"
+            onClick={logout}
+            className="text-sm text-white/40 hover:text-white/70 transition-colors"
           >
-            ✕
+            יציאה
           </button>
-        )}
-
-        {/* Search dropdown */}
-        {(searchResults || searchLoading) && (
-          <div
-            className="absolute top-full right-0 w-72 bg-white rounded-xl shadow-2xl border border-gray-100 z-50 overflow-hidden"
-            style={{ marginTop: 4 }}
-          >
-            {searchLoading && (
-              <div className="px-4 py-3 text-sm text-gray-400">מחפש...</div>
-            )}
-            {!searchLoading && searchResults && totalResults === 0 && (
-              <div className="px-4 py-3 text-sm text-gray-400">אין תוצאות</div>
-            )}
-            {!searchLoading && searchResults && totalResults > 0 && (
-              <div className="max-h-80 overflow-y-auto" dir="rtl">
-                {searchResults.projects.length > 0 && (
-                  <div>
-                    <div className="px-3 py-1.5 text-xs font-semibold text-gray-400 bg-gray-50">פרויקטים</div>
-                    {searchResults.projects.map(r => (
-                      <button key={r.id} onClick={() => navigateTo(r)}
-                        className="w-full text-right px-3 py-2 hover:bg-blue-50 flex items-start gap-2">
-                        <span className="text-sm">🏗</span>
-                        <div>
-                          <div className="text-sm font-medium text-gray-800">{r.name}</div>
-                          {r.address && <div className="text-xs text-gray-400">{r.address}</div>}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {searchResults.tasks.length > 0 && (
-                  <div>
-                    <div className="px-3 py-1.5 text-xs font-semibold text-gray-400 bg-gray-50">משימות</div>
-                    {searchResults.tasks.map(r => (
-                      <button key={r.id} onClick={() => navigateTo(r)}
-                        className="w-full text-right px-3 py-2 hover:bg-blue-50 flex items-start gap-2">
-                        <span className="text-sm">✓</span>
-                        <div>
-                          <div className="text-sm font-medium text-gray-800">{r.title}</div>
-                          <div className="text-xs text-gray-400">{r.status}</div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {searchResults.contacts.length > 0 && (
-                  <div>
-                    <div className="px-3 py-1.5 text-xs font-semibold text-gray-400 bg-gray-50">אנשי קשר</div>
-                    {searchResults.contacts.map(r => (
-                      <button key={r.id} onClick={() => navigateTo(r)}
-                        className="w-full text-right px-3 py-2 hover:bg-blue-50 flex items-start gap-2">
-                        <span className="text-sm">👤</span>
-                        <div>
-                          <div className="text-sm font-medium text-gray-800">{r.name}</div>
-                          {r.profession && <div className="text-xs text-gray-400">{r.profession}</div>}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {searchResults.documents.length > 0 && (
-                  <div>
-                    <div className="px-3 py-1.5 text-xs font-semibold text-gray-400 bg-gray-50">מסמכים</div>
-                    {searchResults.documents.map(r => (
-                      <button key={r.id} onClick={() => navigateTo(r)}
-                        className="w-full text-right px-3 py-2 hover:bg-blue-50 flex items-start gap-2">
-                        <span className="text-sm">📄</span>
-                        <div className="text-sm font-medium text-gray-800">{r.name}</div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Main nav */}
-      <nav className="flex-1 py-4 overflow-y-auto">
-        {mainNavItems.map(item => (
-          <NavLink key={item.href} {...item} pathname={pathname} />
-        ))}
-      </nav>
-
-      {/* Bottom nav */}
-      <div className="border-t border-white/10 py-2">
-        {bottomNavItems.map(item => (
-          <NavLink
-            key={item.href}
-            {...item}
-            pathname={pathname}
-            badge={item.href === "/documents" ? expiringDocs : undefined}
-          />
-        ))}
-
-        {isAdmin && (
-          <NavLink
-            href="/settings"
-            label="הגדרות"
-            icon="⚙"
-            pathname={pathname}
-            badge={pendingCount}
-          />
-        )}
-      </div>
-
-      {/* Logout */}
-      <div className="px-6 py-4 border-t border-white/10">
-        <button
-          onClick={logout}
-          className="text-sm text-white/50 hover:text-white/80 transition-colors"
-        >
-          יציאה
-        </button>
-      </div>
-    </aside>
+        </div>
+      </aside>
+    </>
   );
 }

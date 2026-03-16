@@ -73,6 +73,17 @@ export default function SettingsPage() {
     } finally { setActionLoading(null); }
   }
 
+  async function deleteUser(userId: string) {
+    if (!confirm("למחוק משתמש זה לצמיתות?")) return;
+    setActionLoading(userId + "_delete");
+    try {
+      await apiFetch(`/tenants/${TENANT_ID}/users/${userId}`, { method: "DELETE" });
+      setUsers(prev => prev.filter(u => u.id !== userId));
+    } catch (err: any) {
+      alert(err?.message || "שגיאה במחיקה");
+    } finally { setActionLoading(null); }
+  }
+
   async function changeRole(userId: string, newRole: string) {
     setActionLoading(userId + "_role");
     try {
@@ -120,7 +131,7 @@ export default function SettingsPage() {
   const active   = users.filter(u => u.status === "active");
   const rejected = users.filter(u => u.status === "rejected");
 
-  const rowProps = { myRole, isSelf: false, actionLoading, onApprove: approve, onReject: reject, onRoleChange: changeRole };
+  const rowProps = { myRole, isSelf: false, actionLoading, onApprove: approve, onReject: reject, onRoleChange: changeRole, onDelete: deleteUser };
 
   return (
     <div>
@@ -247,7 +258,7 @@ export default function SettingsPage() {
   );
 }
 
-function UserRow({ user, myRole, isSelf, actionLoading, onApprove, onReject, onRoleChange }: {
+function UserRow({ user, myRole, isSelf, actionLoading, onApprove, onReject, onRoleChange, onDelete }: {
   user: User;
   myRole: string;
   isSelf: boolean;
@@ -255,6 +266,7 @@ function UserRow({ user, myRole, isSelf, actionLoading, onApprove, onReject, onR
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
   onRoleChange: (id: string, role: string) => void;
+  onDelete: (id: string) => void;
 }) {
   const s = statusLabel[user.status] || statusLabel.active;
   const rb = roleBadge[user.role];
@@ -320,6 +332,17 @@ function UserRow({ user, myRole, isSelf, actionLoading, onApprove, onReject, onR
             <button onClick={() => onApprove(user.id)} disabled={actionLoading === user.id + "_approve"}
               className="text-xs px-3 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">
               {actionLoading === user.id + "_approve" ? "..." : "הפעל מחדש"}
+            </button>
+          )}
+
+          {isSuperAdmin && (
+            <button
+              onClick={() => onDelete(user.id)}
+              disabled={actionLoading === user.id + "_delete"}
+              className="text-xs px-2 py-1 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+              title="מחק משתמש"
+            >
+              {actionLoading === user.id + "_delete" ? "..." : "🗑"}
             </button>
           )}
         </div>

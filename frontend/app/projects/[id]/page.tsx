@@ -37,7 +37,7 @@ interface Quote { id: string; project_id?: string; vendor?: string; title: strin
 
 const DEFAULT_WIDTHS: Record<string, number> = { title: 300, assignee: 130, contact: 160, status: 140, priority: 110, start_date: 120, end_date: 120, notes: 200 };
 
-type Tab = "tasks" | "gantt" | "budget" | "comments" | "docs";
+type Tab = "tasks" | "kanban" | "gantt" | "budget" | "comments" | "docs";
 
 interface Doc { id: string; name: string; path: string; expiry_date?: string; task_id?: string; stage_id?: string; project_id?: string; }
 
@@ -94,6 +94,9 @@ export default function ProjectPage() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState("");
   const commentsEndRef = useRef<HTMLDivElement>(null);
+
+  // Gantt zoom
+  const [ganttZoom, setGanttZoom] = useState<"day" | "week" | "month" | "year">("month");
 
   // Docs state
   const [projectDocs, setProjectDocs] = useState<Doc[]>([]);
@@ -202,7 +205,7 @@ export default function ProjectPage() {
   }, [selectedTaskId]);
 
   useEffect(() => {
-    if (taskPanel) loadTaskDocs(taskPanel);
+    if (taskPanel) { loadTaskDocs(taskPanel); loadComments(taskPanel); }
     else setTaskDocs([]);
   }, [taskPanel]);
 
@@ -343,7 +346,7 @@ export default function ProjectPage() {
     if (!newTaskTitle.trim()) return;
     const task = await apiFetch(`/tenants/${TENANT_ID}/tasks/`, {
       method: "POST",
-      body: JSON.stringify({ project_id: projectId, stage_id: stageId, title: newTaskTitle, priority: "medium", status: "todo" }),
+      body: JSON.stringify({ project_id: projectId, stage_id: stageId, title: newTaskTitle, priority: "medium", status: "todo", start_date: new Date().toISOString().slice(0, 10) }),
     });
     setTasks(prev => [...prev, task]);
     setNewTaskTitle("");
@@ -391,8 +394,9 @@ export default function ProjectPage() {
   }
 
   async function sendComment() {
-    if (!newComment.trim() || !selectedTaskId) return;
-    const comment = await apiFetch(`/tenants/${TENANT_ID}/tasks/${selectedTaskId}/comments/`, {
+    const taskId = taskPanel || selectedTaskId;
+    if (!newComment.trim() || !taskId) return;
+    const comment = await apiFetch(`/tenants/${TENANT_ID}/tasks/${taskId}/comments/`, {
       method: "POST",
       body: JSON.stringify({ content: newComment }),
     });
@@ -479,10 +483,11 @@ export default function ProjectPage() {
       <div className="flex gap-0 border-b border-gray-200 bg-white px-8 flex-shrink-0 items-center">
         {[
           { id: "tasks" as Tab, label: "משימות" },
+          { id: "kanban" as Tab, label: "קנבן" },
           { id: "gantt" as Tab, label: "ציר זמן" },
           { id: "budget" as Tab, label: "תקציב" },
           { id: "docs" as Tab, label: "מסמכים" },
-          { id: "comments" as Tab, label: "הערות" },
+          { id: "comments" as Tab, label: "תגובות" },
         ].map(t => (
           <button
             key={t.id}
@@ -712,7 +717,7 @@ export default function ProjectPage() {
                             <button
                               onClick={() => { setSelectedTaskId(task.id); setTab("comments"); }}
                               className="text-gray-300 hover:text-blue-500 text-base"
-                              title="הערות"
+                              title="תגובות"
                             >
                               💬
                             </button>
@@ -773,6 +778,118 @@ export default function ProjectPage() {
         </div>
       )}
 
+      {/* Tab: Kanban */}
+      {tab === "kanban" && (() => {
+        const KANBAN_COLS = [
+          { status: "todo",        label: "לביצוע",  color: "#7f8c8d", bg: "#f8f9fa" },
+          { status: "in_progress", label: "בעבודה",  color: "#2980b9", bg: "#ebf5fb" },
+          { status: "review",      label: "לבדיקה",  color: "#8e44ad", bg: "#f5eef8" },
+          { status: "done",        label: "הושלם",   color: "#27ae60", bg: "#eafaf1" },
+          { status: "blocked",     label: "חסום",    color: "#c0392b", bg: "#fdedec" },
+        ];
+        const PRIO_COLOR: Record<string, string> = { high: "#c0392b", medium: "#e67e22", low: "#27ae60" };
+        const userMap = Object.fromEntries(users.map(u => [u.id, u.name]));
+        const stageMap = Object.fromEntries(stages.map(s => [s.id, s.name]));
+
+        async function handleDrop(taskId: string, newStatus: string) {
+          const task = tasks.find(t => t.id === taskId);
+          if (!task || task.status === newStatus) return;
+          setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
+          try {
+            await apiFetch(`/tenants/${TENANT_ID}/tasks/${taskId}`, {
+              method: "PUT",
+              body: JSON.stringify({ status: newStatus }),
+            });
+          } catch {
+            setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: task.status } : t));
+          }
+        }
+
+        return (
+          <div className="flex-1 overflow-auto px-6 py-4">
+            <div className="flex gap-3 h-full min-h-0" style={{ minWidth: KANBAN_COLS.length * 220 }}>
+              {KANBAN_COLS.map(col => {
+                const colTasks = tasks.filter(t => t.status === col.status);
+                return (
+                  <div
+                    key={col.status}
+                    className="flex flex-col rounded-xl border border-gray-200 overflow-hidden flex-shrink-0"
+                    style={{ width: 220, background: col.bg }}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={e => {
+                      const taskId = e.dataTransfer.getData("taskId");
+                      if (taskId) handleDrop(taskId, col.status);
+                    }}
+                  >
+                    {/* Column header */}
+                    <div className="px-3 py-2.5 flex items-center gap-2 border-b border-gray-200 bg-white/60">
+                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: col.color }} />
+                      <span className="text-sm font-semibold" style={{ color: col.color }}>{col.label}</span>
+                      <span
+                        className="mr-auto text-xs font-medium px-1.5 py-0.5 rounded-full"
+                        style={{ background: col.color + "20", color: col.color }}
+                      >
+                        {colTasks.length}
+                      </span>
+                    </div>
+
+                    {/* Cards */}
+                    <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                      {colTasks.map(task => (
+                        <div
+                          key={task.id}
+                          draggable
+                          onDragStart={e => {
+                            e.dataTransfer.setData("taskId", task.id);
+                            e.dataTransfer.effectAllowed = "move";
+                          }}
+                          onClick={() => setTaskPanel(task.id)}
+                          className="bg-white rounded-lg p-3 shadow-sm border border-gray-100 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow"
+                        >
+                          {/* Priority stripe */}
+                          <div className="w-full h-0.5 rounded-full mb-2" style={{ background: PRIO_COLOR[task.priority] || "#ccc" }} />
+                          <div className="text-sm font-medium text-gray-800 leading-tight">{task.title}</div>
+                          <div className="mt-2 flex items-center gap-2 flex-wrap">
+                            {task.stage_id && stageMap[task.stage_id] && (
+                              <span className="text-xs text-gray-400 truncate max-w-full">{stageMap[task.stage_id]}</span>
+                            )}
+                          </div>
+                          {(task.assignee_id || task.end_date) && (
+                            <div className="mt-1.5 flex items-center justify-between gap-2">
+                              {task.assignee_id && userMap[task.assignee_id] && (
+                                <div
+                                  className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                                  style={{ background: "#011e41" }}
+                                  title={userMap[task.assignee_id]}
+                                >
+                                  {userMap[task.assignee_id][0]}
+                                </div>
+                              )}
+                              {task.end_date && (
+                                <span className="text-xs text-gray-400 mr-auto">
+                                  {new Date(task.end_date).toLocaleDateString("he-IL", { day: "numeric", month: "numeric" })}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      {colTasks.length === 0 && (
+                        <div
+                          className="h-16 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-xs text-gray-300"
+                        >
+                          גרור לכאן
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Tab: Gantt */}
       {tab === "gantt" && (() => {
         const tasksWithDates = tasks.filter(t => t.start_date && t.end_date);
@@ -785,40 +902,103 @@ export default function ProjectPage() {
         }
 
         const allDates = tasksWithDates.flatMap(t => [new Date(t.start_date!), new Date(t.end_date!)]);
-        const minDate = new Date(Math.min(...allDates.map(d => d.getTime())));
-        const maxDate = new Date(Math.max(...allDates.map(d => d.getTime())));
-        minDate.setDate(1);
-        maxDate.setMonth(maxDate.getMonth() + 1, 1);
-        const totalDays = Math.ceil((maxDate.getTime() - minDate.getTime()) / 86400000);
+        const rawMin = new Date(Math.min(...allDates.map(d => d.getTime())));
+        const rawMax = new Date(Math.max(...allDates.map(d => d.getTime())));
 
-        // Generate month labels
-        const months: { label: string; pct: number }[] = [];
-        let cur = new Date(minDate);
-        while (cur < maxDate) {
-          const start = Math.max(0, (cur.getTime() - minDate.getTime()) / 86400000);
-          months.push({
-            label: cur.toLocaleDateString("he-IL", { month: "short", year: "2-digit" }),
-            pct: (start / totalDays) * 100,
-          });
-          cur.setMonth(cur.getMonth() + 1);
+        // Align min/max to zoom boundaries
+        const minDate = new Date(rawMin);
+        const maxDate = new Date(rawMax);
+        if (ganttZoom === "day") {
+          minDate.setHours(0, 0, 0, 0);
+          maxDate.setDate(maxDate.getDate() + 1);
+          maxDate.setHours(0, 0, 0, 0);
+        } else if (ganttZoom === "week") {
+          const day = minDate.getDay();
+          minDate.setDate(minDate.getDate() - day);
+          minDate.setHours(0, 0, 0, 0);
+          maxDate.setDate(maxDate.getDate() + (7 - maxDate.getDay()));
+          maxDate.setHours(0, 0, 0, 0);
+        } else if (ganttZoom === "month") {
+          minDate.setDate(1);
+          maxDate.setMonth(maxDate.getMonth() + 1, 1);
+        } else {
+          minDate.setMonth(0, 1);
+          maxDate.setFullYear(maxDate.getFullYear() + 1, 0, 1);
         }
 
+        const totalMs = maxDate.getTime() - minDate.getTime();
+        const totalDays = totalMs / 86400000;
+
+        // Generate header ticks based on zoom
+        const ticks: { label: string; pct: number }[] = [];
+        const cur = new Date(minDate);
+        while (cur < maxDate) {
+          const pct = ((cur.getTime() - minDate.getTime()) / totalMs) * 100;
+          let label = "";
+          if (ganttZoom === "day") {
+            label = cur.toLocaleDateString("he-IL", { day: "numeric", month: "short" });
+            cur.setDate(cur.getDate() + 1);
+          } else if (ganttZoom === "week") {
+            label = cur.toLocaleDateString("he-IL", { day: "numeric", month: "short" });
+            cur.setDate(cur.getDate() + 7);
+          } else if (ganttZoom === "month") {
+            label = cur.toLocaleDateString("he-IL", { month: "short", year: "2-digit" });
+            cur.setMonth(cur.getMonth() + 1);
+          } else {
+            label = String(cur.getFullYear());
+            cur.setFullYear(cur.getFullYear() + 1);
+          }
+          ticks.push({ label, pct });
+        }
+
+        // Today marker
+        const todayPct = ((new Date().getTime() - minDate.getTime()) / totalMs) * 100;
+        const showToday = todayPct >= 0 && todayPct <= 100;
+
         const STATUS_COLORS: Record<string, string> = { todo: "#aaa", in_progress: "#2980b9", done: "#27ae60", blocked: "#c0392b", review: "#8e44ad" };
+        // Minimum bar width in pixels (for very short tasks)
+        const minBarPct = (1 / totalDays) * 100;
 
         return (
           <div className="flex-1 overflow-auto px-6 py-4">
+            {/* Zoom controls */}
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xs text-gray-400">תצוגה:</span>
+              {(["day", "week", "month", "year"] as const).map(z => (
+                <button
+                  key={z}
+                  onClick={() => setGanttZoom(z)}
+                  className="px-3 py-1 text-xs rounded-md transition-colors"
+                  style={{
+                    background: ganttZoom === z ? "#011e41" : "#f3f4f6",
+                    color: ganttZoom === z ? "#fff" : "#555",
+                  }}
+                >
+                  {z === "day" ? "יום" : z === "week" ? "שבוע" : z === "month" ? "חודש" : "שנה"}
+                </button>
+              ))}
+            </div>
+
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              {/* Month header */}
+              {/* Header ticks */}
               <div className="relative h-8 border-b border-gray-200 bg-gray-50" style={{ marginRight: 220 }}>
-                {months.map((m, i) => (
+                {ticks.map((t, i) => (
                   <div
                     key={i}
-                    className="absolute top-0 h-full flex items-center text-xs text-gray-400 px-2 border-r border-gray-200"
-                    style={{ left: `${m.pct}%` }}
+                    className="absolute top-0 h-full flex items-center text-xs text-gray-400 px-1.5 border-r border-gray-200"
+                    style={{ left: `${t.pct}%` }}
                   >
-                    {m.label}
+                    {t.label}
                   </div>
                 ))}
+                {/* Today line */}
+                {showToday && (
+                  <div
+                    className="absolute top-0 h-full border-r-2 border-red-400 opacity-60"
+                    style={{ left: `${todayPct}%` }}
+                    title="היום"
+                  />
+                )}
               </div>
 
               {/* Task rows */}
@@ -832,19 +1012,24 @@ export default function ProjectPage() {
                       {stage.name}
                     </div>
                     {stageTasks.map(task => {
-                      const start = (new Date(task.start_date!).getTime() - minDate.getTime()) / 86400000;
-                      const end = (new Date(task.end_date!).getTime() - minDate.getTime()) / 86400000;
-                      const leftPct = (start / totalDays) * 100;
-                      const widthPct = Math.max(0.5, ((end - start) / totalDays) * 100);
+                      const startMs = new Date(task.start_date!).getTime() - minDate.getTime();
+                      const endMs = new Date(task.end_date!).getTime() - minDate.getTime();
+                      const leftPct = Math.max(0, (startMs / totalMs) * 100);
+                      const widthPct = Math.max(minBarPct, ((endMs - startMs) / totalMs) * 100);
                       const color = STATUS_COLORS[task.status] || "#aaa";
                       return (
                         <div key={task.id} className="flex items-center border-b border-gray-50 hover:bg-gray-50 py-1.5">
                           <div className="text-sm text-gray-700 truncate flex-shrink-0 px-3" style={{ width: 220 }}>{task.title}</div>
                           <div className="flex-1 relative h-6">
+                            {/* Today line in row */}
+                            {showToday && (
+                              <div className="absolute top-0 h-full border-r border-red-300 opacity-40" style={{ left: `${todayPct}%` }} />
+                            )}
                             <div
-                              className="absolute h-5 rounded-md top-0.5 flex items-center px-2 text-white text-xs overflow-hidden"
+                              className="absolute h-5 rounded-md top-0.5 flex items-center px-2 text-white text-xs overflow-hidden cursor-pointer"
                               style={{ left: `${leftPct}%`, width: `${widthPct}%`, background: color, minWidth: 4 }}
                               title={`${task.start_date?.slice(0, 10)} → ${task.end_date?.slice(0, 10)}`}
+                              onClick={() => setTaskPanel(task.id)}
                             >
                               {widthPct > 5 ? task.title : ""}
                             </div>
@@ -1248,8 +1433,9 @@ export default function ProjectPage() {
               <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">בחר משימה להצגת הערות</div>
             ) : (
               <>
-                <div className="px-6 py-4 border-b border-gray-200 bg-white flex-shrink-0">
+                <div className="px-6 py-4 border-b border-gray-200 bg-white flex-shrink-0 flex items-center justify-between">
                   <div className="font-semibold text-gray-800">{selectedTask?.title}</div>
+                  <button onClick={() => setSelectedTaskId(null)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
                 </div>
                 <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
                   {comments.length === 0 && (
@@ -1409,8 +1595,9 @@ export default function ProjectPage() {
                   <textarea
                     defaultValue={t.description || ""}
                     onBlur={e => { if (e.target.value !== (t.description || "")) updateTask(t.id, { description: e.target.value }); }}
+                    onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); const val = e.currentTarget.value; if (val !== (t.description || "")) updateTask(t.id, { description: val }); e.currentTarget.blur(); } }}
                     rows={3}
-                    placeholder="הוסף הערה..."
+                    placeholder="הוסף הערה... (Enter לשמירה, Shift+Enter לשורה חדשה)"
                     className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-blue-300 resize-none"
                   />
                 </div>

@@ -5,13 +5,15 @@ Phase 3 — AI endpoints:
 - POST /tenants/{tenant_id}/ai/check-duplicate — Fuzzy: בדיקת כפילות פרויקט
 """
 
+import os
 from uuid import UUID
 
+import anthropic
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import ai as ai_service
+from .. import ai as ai_service, models
 from ..deps import get_db
 
 router = APIRouter(prefix="/tenants/{tenant_id}/ai", tags=["ai"])
@@ -33,6 +35,14 @@ class DuplicateCheckRequest(BaseModel):
     name: str
     gush: str
     helka: str
+
+
+class AskRequest(BaseModel):
+    question: str
+
+
+class AskResponse(BaseModel):
+    answer: str
 
 
 # ---------------------------------------------------------------------------
@@ -67,3 +77,51 @@ def check_duplicate(tenant_id: UUID, req: DuplicateCheckRequest, db: Session = D
         gush=req.gush,
         helka=req.helka,
     )
+
+
+@router.post("/ask", response_model=AskResponse)
+def ask(tenant_id: UUID, req: AskRequest, db: Session = Depends(get_db)):
+    """שאל שאלה חופשית על הנתונים של ה-tenant — Claude מנתח ומשיב."""
+    # Build context: projects, open tasks, budget summary
+    projects = db.query(models.Project).filter(
+        models.Project.tenant_id == tenant_id,
+        models.Project.deleted_at.is_(None),
+    ).all()
+
+    tasks = db.query(models.Task).filter(
+        models.Task.tenant_id == tenant_id,
+        models.Task.deleted_at.is_(None),
+    ).all()
+
+    proj_lines = "\n".join(
+        f"- {p.name} (גוש {p.gush} חלקה {p.helka}, תקציב: {p.budget_total or 'לא מוגדר'})"
+        for p in projects
+    )
+    task_lines = "\n".join(
+        f"- {t.title} [{t.status}] תאריך סיום: {t.end_date or 'לא מוגדר'}"
+        for t in tasks[:50]  # limit context size
+    )
+
+    system_prompt = f"""אתה עוזר AI לניהול פרויקטים נדל"ן עבור חברת Hadas Capital.
+ענה בעברית. היה תמציתי וממוקד.
+
+נתוני המערכת הנוכחיים:
+
+פרויקטים ({len(projects)}):
+{proj_lines or "אין פרויקטים"}
+
+משימות ({len(tasks)}):
+{task_lines or "אין משימות"}
+"""
+
+    try:
+        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        msg = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            system=system_prompt,
+            messages=[{"role": "user", "content": req.question}],
+        )
+        return AskResponse(answer=msg.content[0].text)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"שגיאה ב-AI: {str(e)[:200]}")

@@ -71,6 +71,20 @@ def notify_user_rejected(user_email: str, user_name: str):
     _send(user_email, "בקשת גישה — מסלול", html)
 
 
+def notify_user_invited(user_email: str, user_name: str, invited_by: str = ""):
+    """שולח למשתמש שהוזמן ישירות על ידי מנהל."""
+    inviter_txt = f" על ידי {invited_by}" if invited_by else ""
+    html = f"""
+    <div dir="rtl" style="font-family: Arial, sans-serif;">
+      <h2 style="color:#011e41;">הוזמנת למסלול — Hadas Capital</h2>
+      <p>שלום {user_name},</p>
+      <p>הוזמנת{inviter_txt} למערכת <strong>מסלול</strong> לניהול פרויקטים.</p>
+      <p>על מנת להתחבר, השתמש בכניסה עם Google בחשבון: <strong>{user_email}</strong></p>
+    </div>
+    """
+    _send(user_email, "הוזמנת למסלול — Hadas Capital", html)
+
+
 def notify_document_expiring(admin_emails: list[str], doc_name: str, days_left: int, project_name: str = ""):
     """התראה על מסמך שעומד לפוג."""
     urgency = "פג תוקף" if days_left <= 0 else f"פג תוקף בעוד {days_left} ימים"

@@ -6,26 +6,20 @@ import { apiFetch } from "@/lib/api";
 
 const TENANT_ID = "f7d67cb1-3414-47a4-8ddb-2845d11d32ff";
 
-interface Task { id: string; status: string; end_date?: string; title: string; priority: string; }
+interface Task { id: string; status: string; end_date?: string; title: string; priority: string; project_id?: string; }
 interface Project { id: string; name: string; }
-
-interface Stats {
-  projects: number;
-  tasks: number;
-  tasksDone: number;
-  tasksOverdue: number;
-  tasksInProgress: number;
-  contacts: number;
-  documents: number;
-  expiring: number;
-  pipeline: number;
-}
+interface BudgetEntry { id: string; project_id: string; category: string; amount: number; is_planned: number; }
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [stats, setStats] = useState<Stats | null>(null);
   const [userName, setUserName] = useState("");
-  const [overdueTasks, setOverdueTasks] = useState<(Task & { projectName?: string })[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [allTasks, setAllTasks] = useState<Task[]>([]);
+  const [allEntries, setAllEntries] = useState<BudgetEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedProject, setSelectedProject] = useState<string>("all");
+  const [expiringCount, setExpiringCount] = useState(0);
+  const [pipelineCount, setPipelineCount] = useState(0);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -36,65 +30,90 @@ export default function DashboardPage() {
       setUserName(payload.name || payload.email);
     } catch {}
 
-    const today = new Date().toISOString().slice(0, 10);
-
     Promise.all([
       apiFetch(`/tenants/${TENANT_ID}/projects/`).catch(() => []),
       apiFetch(`/tenants/${TENANT_ID}/tasks/`).catch(() => []),
-      apiFetch(`/tenants/${TENANT_ID}/contacts/`).catch(() => []),
-      apiFetch(`/tenants/${TENANT_ID}/documents/`).catch(() => []),
       apiFetch(`/tenants/${TENANT_ID}/documents/expiring`).catch(() => []),
       apiFetch(`/tenants/${TENANT_ID}/pipeline/pending`).catch(() => []),
-    ]).then(([projects, tasks, contacts, documents, expiring, pipeline]) => {
-      const allTasks: Task[] = tasks;
-      const allProjects: Project[] = projects;
+    ]).then(async ([projs, tasks, expiring, pipeline]) => {
+      setProjects(projs);
+      setAllTasks(tasks);
+      setExpiringCount(expiring.length);
+      setPipelineCount(pipeline.length);
 
-      const projectMap: Record<string, string> = {};
-      allProjects.forEach((p) => { projectMap[p.id] = p.name; });
-
-      const done = allTasks.filter(t => t.status === "done").length;
-      const inProgress = allTasks.filter(t => t.status === "in_progress").length;
-      const overdueList = allTasks.filter(
-        t => t.end_date && t.end_date.slice(0, 10) < today && t.status !== "done"
+      const entries = await Promise.all(
+        projs.map((p: Project) =>
+          apiFetch(`/tenants/${TENANT_ID}/projects/${p.id}/budget/`).catch(() => [])
+        )
       );
-
-      setStats({
-        projects: allProjects.length,
-        tasks: allTasks.length,
-        tasksDone: done,
-        tasksInProgress: inProgress,
-        tasksOverdue: overdueList.length,
-        contacts: contacts.length,
-        documents: documents.length,
-        expiring: expiring.length,
-        pipeline: pipeline.length,
-      });
-
-      setOverdueTasks(overdueList.slice(0, 5));
+      setAllEntries(entries.flat());
+      setLoading(false);
     });
   }, [router]);
 
-  const cards = stats ? [
-    { label: "פרויקטים", value: stats.projects, href: "/projects", color: "#011e41", sub: null },
-    { label: "משימות פעילות", value: stats.tasksInProgress, href: "/projects", color: "#2980b9", sub: `${stats.tasksDone} הושלמו` },
-    { label: "משימות באיחור", value: stats.tasksOverdue, href: "/projects", color: stats.tasksOverdue > 0 ? "#c0392b" : "#7f8c8d", sub: stats.tasksOverdue > 0 ? "דורש טיפול" : "הכל בסדר" },
-    { label: "מסמכים פגי תוקף", value: stats.expiring, href: "/documents", color: stats.expiring > 0 ? "#e67e22" : "#7f8c8d", sub: stats.expiring > 0 ? "לחידוש" : "הכל תקין" },
-    { label: "מיילים ממתינים", value: stats.pipeline, href: "/pipeline", color: stats.pipeline > 0 ? "#a4742d" : "#7f8c8d", sub: stats.pipeline > 0 ? "לאישור" : "אין חדש" },
-  ] : [];
+  const today = new Date().toISOString().slice(0, 10);
+
+  const filteredTasks = selectedProject === "all" ? allTasks : allTasks.filter(t => t.project_id === selectedProject);
+  const filteredEntries = selectedProject === "all" ? allEntries : allEntries.filter(e => e.project_id === selectedProject);
+
+  const done = filteredTasks.filter(t => t.status === "done").length;
+  const inProgress = filteredTasks.filter(t => t.status === "in_progress").length;
+  const overdueList = filteredTasks.filter(t => t.end_date && t.end_date.slice(0, 10) < today && t.status !== "done");
+  const total = filteredTasks.length;
+
+  const totalPlanned = filteredEntries.filter(e => e.is_planned === 1).reduce((s, e) => s + e.amount, 0);
+  const totalActual = filteredEntries.filter(e => e.is_planned === 0).reduce((s, e) => s + e.amount, 0);
+
+  const catMap: Record<string, { planned: number; actual: number }> = {};
+  for (const e of filteredEntries) {
+    if (!catMap[e.category]) catMap[e.category] = { planned: 0, actual: 0 };
+    if (e.is_planned) catMap[e.category].planned += e.amount;
+    else catMap[e.category].actual += e.amount;
+  }
+  const catEntries = Object.entries(catMap).sort((a, b) => (b[1].planned + b[1].actual) - (a[1].planned + a[1].actual));
+  const maxCatVal = Math.max(...catEntries.map(([, v]) => Math.max(v.planned, v.actual)), 1);
+
+  function fmt(n: number) {
+    if (n >= 1_000_000) return "₪" + (n / 1_000_000).toFixed(1) + "M";
+    if (n >= 1_000) return "₪" + Math.round(n / 1_000) + "K";
+    return "₪" + Math.round(n);
+  }
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "בוקר טוב" : hour < 17 ? "צהריים טובים" : "ערב טוב";
 
+  const cards = !loading ? [
+    { label: "פרויקטים", value: projects.length, href: "/projects", color: "#011e41", sub: null },
+    { label: "משימות פעילות", value: inProgress, href: "/projects", color: "#2980b9", sub: `${done} הושלמו` },
+    { label: "משימות באיחור", value: overdueList.length, href: "/tasks", color: overdueList.length > 0 ? "#c0392b" : "#7f8c8d", sub: overdueList.length > 0 ? "דורש טיפול" : "הכל בסדר" },
+    { label: "מסמכים פגי תוקף", value: expiringCount, href: "/documents", color: expiringCount > 0 ? "#e67e22" : "#7f8c8d", sub: expiringCount > 0 ? "לחידוש" : "הכל תקין" },
+    { label: "מיילים ממתינים", value: pipelineCount, href: "/pipeline", color: pipelineCount > 0 ? "#a4742d" : "#7f8c8d", sub: pipelineCount > 0 ? "לאישור" : "אין חדש" },
+  ] : [];
+
   return (
     <div dir="rtl">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold" style={{ color: "#011e41" }}>
-          {greeting}{userName ? `, ${userName}` : ""}
-        </h1>
-        <p className="text-gray-400 text-sm mt-1">סקירה כללית — {new Date().toLocaleDateString("he-IL", { weekday: "long", day: "numeric", month: "long" })}</p>
+      <div className="mb-6 flex items-end justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold" style={{ color: "#011e41" }}>
+            {greeting}{userName ? `, ${userName}` : ""}
+          </h1>
+          <p className="text-gray-400 text-sm mt-1">
+            סקירה כללית — {new Date().toLocaleDateString("he-IL", { weekday: "long", day: "numeric", month: "long" })}
+          </p>
+        </div>
+        <select
+          value={selectedProject}
+          onChange={e => setSelectedProject(e.target.value)}
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white shadow-sm"
+        >
+          <option value="all">כל הפרויקטים</option>
+          {projects.map(p => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
       </div>
 
-      {!stats ? (
+      {loading ? (
         <div className="text-gray-400">טוען...</div>
       ) : (
         <>
@@ -116,22 +135,20 @@ export default function DashboardPage() {
           </div>
 
           {/* Task progress chart */}
-          {stats && stats.tasks > 0 && (() => {
-            const total = stats.tasks;
+          {total > 0 && (() => {
             const bars = [
-              { label: "הושלם", count: stats.tasksDone, color: "#27ae60" },
-              { label: "בעבודה", count: stats.tasksInProgress, color: "#2980b9" },
-              { label: "באיחור", count: stats.tasksOverdue, color: "#c0392b" },
-              { label: "שאר", count: Math.max(0, total - stats.tasksDone - stats.tasksInProgress), color: "#e0e0e0" },
+              { label: "הושלם", count: done, color: "#27ae60" },
+              { label: "בעבודה", count: inProgress, color: "#2980b9" },
+              { label: "באיחור", count: overdueList.length, color: "#c0392b" },
+              { label: "שאר", count: Math.max(0, total - done - inProgress), color: "#e0e0e0" },
             ];
-            const donePct = Math.round((stats.tasksDone / total) * 100);
+            const donePct = Math.round((done / total) * 100);
             return (
               <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 mb-6">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm font-semibold" style={{ color: "#011e41" }}>התקדמות משימות</span>
                   <span className="text-sm font-bold" style={{ color: "#27ae60" }}>{donePct}% הושלמו</span>
                 </div>
-                {/* Stacked bar */}
                 <div className="w-full h-4 rounded-full overflow-hidden bg-gray-100 flex mb-3">
                   {bars.filter(b => b.count > 0).map(b => (
                     <div
@@ -141,7 +158,6 @@ export default function DashboardPage() {
                     />
                   ))}
                 </div>
-                {/* Legend */}
                 <div className="flex gap-4 flex-wrap">
                   {bars.filter(b => b.count > 0).map(b => (
                     <div key={b.label} className="flex items-center gap-1.5">
@@ -154,15 +170,77 @@ export default function DashboardPage() {
             );
           })()}
 
+          {/* Budget chart */}
+          {(totalPlanned > 0 || totalActual > 0) && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 mb-6">
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                <span className="text-sm font-semibold" style={{ color: "#011e41" }}>תקציב</span>
+                <div className="flex gap-4 text-xs text-gray-500">
+                  <span className="flex items-center gap-1">
+                    <span className="w-3 h-2 rounded-sm inline-block" style={{ background: "#dbeafe" }} />
+                    מתוכנן: {fmt(totalPlanned)}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-3 h-2 rounded-sm inline-block" style={{ background: "#27ae60" }} />
+                    בפועל: {fmt(totalActual)}
+                  </span>
+                </div>
+              </div>
+
+              {totalPlanned > 0 && (
+                <div className="mb-4">
+                  <div className="flex justify-between text-xs text-gray-400 mb-1">
+                    <span>ניצול תקציב כולל</span>
+                    <span style={{ color: totalActual > totalPlanned ? "#c0392b" : "#27ae60" }}>
+                      {Math.round((totalActual / totalPlanned) * 100)}%
+                    </span>
+                  </div>
+                  <div className="w-full h-3 rounded-full bg-gray-100 overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${Math.min(100, (totalActual / totalPlanned) * 100)}%`,
+                        background: totalActual > totalPlanned ? "#c0392b" : "#27ae60",
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {catEntries.length > 0 && (
+                <div className="space-y-2.5 mt-3">
+                  {catEntries.slice(0, 6).map(([cat, vals]) => (
+                    <div key={cat}>
+                      <div className="flex justify-between text-xs text-gray-500 mb-1">
+                        <span>{cat}</span>
+                        <span>{fmt(vals.actual)} / {fmt(vals.planned)}</span>
+                      </div>
+                      <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden relative">
+                        <div
+                          className="absolute h-full rounded-full"
+                          style={{ width: `${(vals.planned / maxCatVal) * 100}%`, background: "#dbeafe" }}
+                        />
+                        <div
+                          className="absolute h-full rounded-full"
+                          style={{ width: `${(vals.actual / maxCatVal) * 100}%`, background: "#27ae60" }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Overdue tasks */}
-          {overdueTasks.length > 0 && (
+          {overdueList.length > 0 && (
             <div className="bg-white rounded-xl border border-red-100 shadow-sm overflow-hidden">
               <div className="px-5 py-3 border-b border-red-100 flex items-center gap-2">
                 <span className="text-sm font-semibold text-red-600">משימות באיחור</span>
-                <span className="text-xs bg-red-100 text-red-600 rounded-full px-2 py-0.5">{stats.tasksOverdue}</span>
+                <span className="text-xs bg-red-100 text-red-600 rounded-full px-2 py-0.5">{overdueList.length}</span>
               </div>
               <div className="divide-y divide-gray-50">
-                {overdueTasks.map(task => {
+                {overdueList.slice(0, 5).map(task => {
                   const daysLate = task.end_date
                     ? Math.floor((Date.now() - new Date(task.end_date).getTime()) / 86400000)
                     : 0;
@@ -176,9 +254,9 @@ export default function DashboardPage() {
                     </div>
                   );
                 })}
-                {stats.tasksOverdue > 5 && (
+                {overdueList.length > 5 && (
                   <a href="/tasks" className="block px-5 py-2 text-xs text-center text-gray-400 hover:text-gray-600">
-                    + עוד {stats.tasksOverdue - 5} משימות באיחור
+                    + עוד {overdueList.length - 5} משימות באיחור
                   </a>
                 )}
               </div>

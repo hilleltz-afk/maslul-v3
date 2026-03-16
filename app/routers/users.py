@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
 from ..deps import get_current_user_id, get_db
-from ..email import notify_user_approved, notify_user_rejected
+from ..email import notify_user_approved, notify_user_invited, notify_user_rejected
 
 router = APIRouter(prefix="/tenants/{tenant_id}/users", tags=["users"])
 
@@ -184,4 +184,12 @@ def invite_user(
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    # שלח אימייל הזמנה
+    try:
+        inviter = db.query(models.User).filter(models.User.id == inviter_id, models.User.deleted_at.is_(None)).first() if inviter_id else None
+        notify_user_invited(user.email, user.name, invited_by=inviter.name if inviter else "")
+    except Exception:
+        pass
+
     return user

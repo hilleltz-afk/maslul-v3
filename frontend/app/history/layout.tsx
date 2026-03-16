@@ -4,7 +4,7 @@ export default function HistoryLayout({ children }: { children: React.ReactNode 
   return (
     <div className="min-h-screen" style={{ background: "#f5f6f8" }}>
       <Sidebar />
-      <main className="mr-56 min-h-screen">
+      <main className="md:mr-56 min-h-screen">
         {children}
       </main>
     </div>
