@@ -19,8 +19,13 @@ def _get_client():
             endpoint_url=f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
             aws_access_key_id=R2_ACCESS_KEY_ID,
             aws_secret_access_key=R2_SECRET_KEY,
-            config=Config(signature_version="s3v4"),
-            region_name="auto",
+            config=Config(
+                signature_version="s3v4",
+                s3={"payload_signing_enabled": False},
+                request_checksum_calculation="when_required",
+                response_checksum_validation="when_required",
+            ),
+            region_name="us-east-1",
         )
     return _client
 
