@@ -104,6 +104,7 @@ export default function ProjectPage() {
   const taskDocFileRef = useRef<HTMLInputElement>(null);
   const [showUploadForm, setShowUploadForm] = useState(false);
   const [uploadTaskId, setUploadTaskId] = useState("");
+  const [isDragOver, setIsDragOver] = useState(false);
 
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -1086,7 +1087,28 @@ export default function ProjectPage() {
 
       {/* Tab: Docs */}
       {tab === "docs" && (
-        <div className="flex-1 overflow-auto px-8 py-6">
+        <div
+          className="flex-1 overflow-auto px-8 py-6 relative"
+          onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
+          onDragEnter={e => { e.preventDefault(); setIsDragOver(true); }}
+          onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDragOver(false); }}
+          onDrop={e => {
+            e.preventDefault();
+            setIsDragOver(false);
+            const f = e.dataTransfer.files[0];
+            if (f) uploadProjectDoc(f, uploadTaskId || undefined);
+          }}
+        >
+          {/* Drag overlay */}
+          {isDragOver && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center rounded-xl border-2 border-dashed border-blue-400 bg-blue-50/80 pointer-events-none">
+              <div className="text-center">
+                <div className="text-4xl mb-2">📂</div>
+                <div className="text-blue-600 font-semibold">שחרר להעלאה</div>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-between mb-4">
             <span className="text-sm font-semibold" style={{ color: "#011e41" }}>מסמכי פרויקט</span>
             <button
@@ -1132,8 +1154,21 @@ export default function ProjectPage() {
             </div>
           )}
 
+          {docsUploading && (
+            <div className="text-sm text-blue-500 mb-3 flex items-center gap-2">
+              <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+              מעלה קובץ...
+            </div>
+          )}
+
           {projectDocs.length === 0 ? (
-            <div className="text-gray-400 text-sm py-8 text-center">אין מסמכים לפרויקט זה</div>
+            <div
+              className="border-2 border-dashed border-gray-200 rounded-xl py-16 text-center cursor-pointer hover:border-gray-300 transition-colors"
+              onClick={() => setShowUploadForm(true)}
+            >
+              <div className="text-3xl mb-2">📂</div>
+              <div className="text-gray-400 text-sm">גרור קובץ לכאן או לחץ להעלאה</div>
+            </div>
           ) : (
             <div className="flex flex-col gap-2">
               {projectDocs.map(doc => {
