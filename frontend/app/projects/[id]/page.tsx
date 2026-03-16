@@ -433,7 +433,7 @@ export default function ProjectPage() {
 
       {/* Tab: Tasks */}
       {tab === "tasks" && (
-        <div className="flex-1 overflow-auto px-4 py-4">
+        <div className="flex-1 overflow-auto px-8 py-6">
           {stages.map((stage) => {
             const stageTasks = tasks.filter(t => t.stage_id === stage.id);
             const isCollapsed = collapsed[stage.id];
