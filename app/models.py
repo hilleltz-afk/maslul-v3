@@ -168,6 +168,7 @@ class Document(Base):
     tenant_id = Column(GUID(), ForeignKey("tenants.id"), nullable=False)
     project_id = Column(GUID(), ForeignKey("projects.id"), nullable=True)
     task_id = Column(GUID(), ForeignKey("tasks.id"), nullable=True)
+    stage_id = Column(GUID(), ForeignKey("stages.id"), nullable=True)
     name = Column(String, nullable=False)
     path = Column(String, nullable=False)
     expiry_date = Column(DateTime, nullable=True)

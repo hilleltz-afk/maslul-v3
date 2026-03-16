@@ -183,6 +183,7 @@ DDL = [
     "ALTER TABLE contacts ADD COLUMN IF NOT EXISTS mobile_phone VARCHAR",
     "ALTER TABLE contacts ADD COLUMN IF NOT EXISTS notes TEXT",
     "ALTER TABLE documents ADD COLUMN IF NOT EXISTS task_id VARCHAR(36)",
+    "ALTER TABLE documents ADD COLUMN IF NOT EXISTS stage_id VARCHAR(36)",
     # ---- New tables ----
     """CREATE TABLE IF NOT EXISTS budget_entries (
         id VARCHAR(36) PRIMARY KEY,

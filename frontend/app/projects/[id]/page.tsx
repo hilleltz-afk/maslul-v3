@@ -39,7 +39,7 @@ const DEFAULT_WIDTHS: Record<string, number> = { title: 300, assignee: 130, cont
 
 type Tab = "tasks" | "gantt" | "budget" | "comments" | "docs";
 
-interface Doc { id: string; name: string; path: string; expiry_date?: string; task_id?: string; project_id?: string; }
+interface Doc { id: string; name: string; path: string; expiry_date?: string; task_id?: string; stage_id?: string; project_id?: string; }
 
 export default function ProjectPage() {
   const router = useRouter();
@@ -147,13 +147,17 @@ export default function ProjectPage() {
     setProjectDocs(data);
   }
 
-  async function uploadProjectDoc(file: File, taskId?: string) {
+  async function uploadProjectDoc(file: File, association?: string) {
     setDocsUploading(true);
     try {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("project_id", projectId);
-      if (taskId) fd.append("task_id", taskId);
+      if (association?.startsWith("stage:")) {
+        fd.append("stage_id", association.replace("stage:", ""));
+      } else if (association) {
+        fd.append("task_id", association);
+      }
       const doc = await apiUpload(`/tenants/${TENANT_ID}/documents/upload`, fd);
       setProjectDocs(prev => [doc, ...prev]);
       setShowUploadForm(false);
@@ -1128,17 +1132,27 @@ export default function ProjectPage() {
                   ref={docFileRef}
                 />
               </div>
-              <div className="flex flex-col gap-1 min-w-48">
-                <label className="text-xs text-gray-500">שייך למשימה (אופציונלי)</label>
+              <div className="flex flex-col gap-1 min-w-56">
+                <label className="text-xs text-gray-500">שיוך (אופציונלי)</label>
                 <select
                   value={uploadTaskId}
                   onChange={e => setUploadTaskId(e.target.value)}
                   className="text-sm border border-gray-200 rounded px-2 py-1.5 outline-none"
                 >
-                  <option value="">— ללא משימה ספציפית —</option>
-                  {tasks.map(t => (
-                    <option key={t.id} value={t.id}>{t.title}</option>
-                  ))}
+                  <option value="">— ללא שיוך —</option>
+                  {stages.map(stage => {
+                    const stageTasks = tasks.filter(t => t.stage_id === stage.id);
+                    return [
+                      <option key={`stage-${stage.id}`} value={`stage:${stage.id}`} style={{ fontWeight: "bold" }}>
+                        📁 {stage.name}
+                      </option>,
+                      ...stageTasks.map(t => (
+                        <option key={t.id} value={t.id}>
+                          {"　　"}📌 {t.title}
+                        </option>
+                      )),
+                    ];
+                  })}
                 </select>
               </div>
               <button
@@ -1172,8 +1186,8 @@ export default function ProjectPage() {
           ) : (
             <div className="flex flex-col gap-2">
               {projectDocs.map(doc => {
-                const isTaskDoc = !!doc.task_id;
-                const taskName = isTaskDoc ? tasks.find(t => t.id === doc.task_id)?.title : null;
+                const taskName = doc.task_id ? tasks.find(t => t.id === doc.task_id)?.title : null;
+                const stageName = doc.stage_id ? stages.find(s => s.id === doc.stage_id)?.name : null;
                 return (
                   <div key={doc.id} className="bg-white rounded-xl px-4 py-3 shadow-sm flex items-center gap-3 group">
                     <span className="text-xl flex-shrink-0">📄</span>
@@ -1186,6 +1200,7 @@ export default function ProjectPage() {
                         style={{ color: "#011e41" }}
                       >{doc.name}</a>
                       {taskName && <div className="text-xs text-gray-400 mt-0.5">📌 {taskName}</div>}
+                      {stageName && !taskName && <div className="text-xs text-gray-400 mt-0.5">📁 {stageName}</div>}
                       {doc.expiry_date && (
                         <div className="text-xs text-orange-500 mt-0.5">
                           תוקף: {new Date(doc.expiry_date).toLocaleDateString("he-IL")}

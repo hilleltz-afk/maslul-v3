@@ -37,6 +37,7 @@ async def upload_document(
     file: UploadFile = File(...),
     project_id: Optional[str] = Form(None),
     task_id: Optional[str] = Form(None),
+    stage_id: Optional[str] = Form(None),
     expiry_date: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     user_id: str | None = Depends(get_current_user_id),
@@ -44,14 +45,17 @@ async def upload_document(
     content = await file.read()
     filename = file.filename or "file"
 
-    if storage.r2_configured():
-        file_url = storage.upload_file(content, filename)
-    else:
-        ext = os.path.splitext(filename)[1]
-        stored_name = f"{uuid_lib.uuid4()}{ext}"
-        with open(os.path.join(UPLOAD_DIR, stored_name), "wb") as f:
-            f.write(content)
-        file_url = f"/uploads/{stored_name}"
+    try:
+        if storage.r2_configured():
+            file_url = storage.upload_file(content, filename)
+        else:
+            ext = os.path.splitext(filename)[1]
+            stored_name = f"{uuid_lib.uuid4()}{ext}"
+            with open(os.path.join(UPLOAD_DIR, stored_name), "wb") as f:
+                f.write(content)
+            file_url = f"/uploads/{stored_name}"
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"שגיאת אחסון: {str(e)}")
 
     expiry_dt = None
     if expiry_date:
@@ -65,6 +69,7 @@ async def upload_document(
         tenant_id=str(tenant_id),
         project_id=project_id or None,
         task_id=task_id or None,
+        stage_id=stage_id or None,
         name=filename,
         path=file_url,
         expiry_date=expiry_dt,

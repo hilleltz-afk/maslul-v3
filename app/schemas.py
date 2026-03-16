@@ -200,6 +200,7 @@ class ContactRead(BaseRead):
 class DocumentCreate(BaseModel):
     project_id: Optional[UUID] = None
     task_id: Optional[UUID] = None
+    stage_id: Optional[UUID] = None
     name: constr(min_length=1)
     path: constr(min_length=1)
     expiry_date: Optional[datetime] = None
@@ -208,6 +209,7 @@ class DocumentCreate(BaseModel):
 class DocumentUpdate(BaseModel):
     project_id: Optional[UUID] = None
     task_id: Optional[UUID] = None
+    stage_id: Optional[UUID] = None
     name: Optional[constr(min_length=1)] = None
     path: Optional[constr(min_length=1)] = None
     expiry_date: Optional[datetime] = None
@@ -217,6 +219,7 @@ class DocumentRead(BaseRead):
     tenant_id: UUID
     project_id: Optional[UUID] = None
     task_id: Optional[UUID] = None
+    stage_id: Optional[UUID] = None
     name: str
     path: str
     expiry_date: Optional[datetime] = None
