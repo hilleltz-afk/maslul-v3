@@ -13,12 +13,11 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 app = FastAPI(title="Maslul API", version="1.0.0")
 
-# CORS — מאפשר קריאות מה-frontend
-frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+# CORS — מאפשר קריאות מה-frontend (JWT בלבד, לא cookies)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[frontend_url, "http://localhost:3000"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
