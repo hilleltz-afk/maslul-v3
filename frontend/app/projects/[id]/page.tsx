@@ -102,6 +102,8 @@ export default function ProjectPage() {
   const [taskDocsUploading, setTaskDocsUploading] = useState(false);
   const docFileRef = useRef<HTMLInputElement>(null);
   const taskDocFileRef = useRef<HTMLInputElement>(null);
+  const [showUploadForm, setShowUploadForm] = useState(false);
+  const [uploadTaskId, setUploadTaskId] = useState("");
 
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -144,14 +146,19 @@ export default function ProjectPage() {
     setProjectDocs(data);
   }
 
-  async function uploadProjectDoc(file: File) {
+  async function uploadProjectDoc(file: File, taskId?: string) {
     setDocsUploading(true);
     try {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("project_id", projectId);
+      if (taskId) fd.append("task_id", taskId);
       const doc = await apiUpload(`/tenants/${TENANT_ID}/documents/upload`, fd);
       setProjectDocs(prev => [doc, ...prev]);
+      setShowUploadForm(false);
+      setUploadTaskId("");
+    } catch (e: any) {
+      alert("שגיאה בהעלאה: " + e.message);
     } finally { setDocsUploading(false); }
   }
 
@@ -1082,16 +1089,48 @@ export default function ProjectPage() {
         <div className="flex-1 overflow-auto px-8 py-6">
           <div className="flex items-center justify-between mb-4">
             <span className="text-sm font-semibold" style={{ color: "#011e41" }}>מסמכי פרויקט</span>
-            <label className={`px-4 py-1.5 rounded-lg text-sm font-medium text-white cursor-pointer ${docsUploading ? "opacity-60" : ""}`} style={{ background: "#011e41" }}>
-              {docsUploading ? "מעלה..." : "+ העלה מסמך"}
-              <input
-                type="file"
-                className="hidden"
-                disabled={docsUploading}
-                onChange={e => { const f = e.target.files?.[0]; if (f) uploadProjectDoc(f); e.target.value = ""; }}
-              />
-            </label>
+            <button
+              onClick={() => setShowUploadForm(v => !v)}
+              className="px-4 py-1.5 rounded-lg text-sm font-medium text-white"
+              style={{ background: "#011e41" }}
+            >+ העלה מסמך</button>
           </div>
+
+          {showUploadForm && (
+            <div className="bg-white rounded-xl p-4 shadow-sm mb-4 flex gap-3 flex-wrap items-end border border-gray-100">
+              <div className="flex flex-col gap-1 flex-1 min-w-48">
+                <label className="text-xs text-gray-500">קובץ</label>
+                <input
+                  type="file"
+                  className="text-sm border border-gray-200 rounded px-2 py-1 outline-none"
+                  ref={docFileRef}
+                />
+              </div>
+              <div className="flex flex-col gap-1 min-w-48">
+                <label className="text-xs text-gray-500">שייך למשימה (אופציונלי)</label>
+                <select
+                  value={uploadTaskId}
+                  onChange={e => setUploadTaskId(e.target.value)}
+                  className="text-sm border border-gray-200 rounded px-2 py-1.5 outline-none"
+                >
+                  <option value="">— ללא משימה ספציפית —</option>
+                  {tasks.map(t => (
+                    <option key={t.id} value={t.id}>{t.title}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                disabled={docsUploading}
+                onClick={() => {
+                  const f = docFileRef.current?.files?.[0];
+                  if (f) uploadProjectDoc(f, uploadTaskId || undefined);
+                }}
+                className="px-4 py-1.5 rounded-lg text-sm font-medium text-white"
+                style={{ background: "#27ae60", opacity: docsUploading ? 0.6 : 1 }}
+              >{docsUploading ? "מעלה..." : "העלה"}</button>
+              <button onClick={() => setShowUploadForm(false)} className="text-sm text-gray-400 hover:text-gray-600 px-2">ביטול</button>
+            </div>
+          )}
 
           {projectDocs.length === 0 ? (
             <div className="text-gray-400 text-sm py-8 text-center">אין מסמכים לפרויקט זה</div>
