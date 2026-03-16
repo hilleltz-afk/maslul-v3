@@ -37,7 +37,9 @@ interface Quote { id: string; project_id?: string; vendor?: string; title: strin
 
 const DEFAULT_WIDTHS: Record<string, number> = { title: 300, assignee: 130, contact: 160, status: 140, priority: 110, start_date: 120, end_date: 120, notes: 200 };
 
-type Tab = "tasks" | "gantt" | "budget" | "comments";
+type Tab = "tasks" | "gantt" | "budget" | "comments" | "docs";
+
+interface Doc { id: string; name: string; path: string; expiry_date?: string; task_id?: string; project_id?: string; }
 
 export default function ProjectPage() {
   const router = useRouter();
@@ -93,6 +95,16 @@ export default function ProjectPage() {
   const [newComment, setNewComment] = useState("");
   const commentsEndRef = useRef<HTMLDivElement>(null);
 
+  // Docs state
+  const [projectDocs, setProjectDocs] = useState<Doc[]>([]);
+  const [docsUploading, setDocsUploading] = useState(false);
+  const [taskDocs, setTaskDocs] = useState<Doc[]>([]);
+  const [taskDocsUploading, setTaskDocsUploading] = useState(false);
+  const docFileRef = useRef<HTMLInputElement>(null);
+  const taskDocFileRef = useRef<HTMLInputElement>(null);
+
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
   useEffect(() => {
     if (!localStorage.getItem("token")) { router.replace("/login"); return; }
     Promise.all([
@@ -124,7 +136,47 @@ export default function ProjectPage() {
 
   useEffect(() => {
     if (tab === "budget") loadBudget();
+    if (tab === "docs") loadProjectDocs();
   }, [tab]);
+
+  async function loadProjectDocs() {
+    const data = await apiFetch(`/tenants/${TENANT_ID}/documents/?project_id=${projectId}`).catch(() => []);
+    setProjectDocs(data);
+  }
+
+  async function uploadProjectDoc(file: File) {
+    setDocsUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("project_id", projectId);
+      const doc = await apiUpload(`/tenants/${TENANT_ID}/documents/upload`, fd);
+      setProjectDocs(prev => [doc, ...prev]);
+    } finally { setDocsUploading(false); }
+  }
+
+  async function deleteDoc(docId: string) {
+    await apiFetch(`/tenants/${TENANT_ID}/documents/${docId}`, { method: "DELETE" });
+    setProjectDocs(prev => prev.filter(d => d.id !== docId));
+    setTaskDocs(prev => prev.filter(d => d.id !== docId));
+  }
+
+  async function loadTaskDocs(taskId: string) {
+    const data = await apiFetch(`/tenants/${TENANT_ID}/documents/?task_id=${taskId}`).catch(() => []);
+    setTaskDocs(data);
+  }
+
+  async function uploadTaskDoc(file: File, taskId: string) {
+    setTaskDocsUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("project_id", projectId);
+      fd.append("task_id", taskId);
+      const doc = await apiUpload(`/tenants/${TENANT_ID}/documents/upload`, fd);
+      setTaskDocs(prev => [doc, ...prev]);
+    } finally { setTaskDocsUploading(false); }
+  }
 
   useEffect(() => {
     if (!stageMenu) return;
@@ -136,6 +188,11 @@ export default function ProjectPage() {
   useEffect(() => {
     if (selectedTaskId) loadComments(selectedTaskId);
   }, [selectedTaskId]);
+
+  useEffect(() => {
+    if (taskPanel) loadTaskDocs(taskPanel);
+    else setTaskDocs([]);
+  }, [taskPanel]);
 
   useEffect(() => {
     commentsEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -412,6 +469,7 @@ export default function ProjectPage() {
           { id: "tasks" as Tab, label: "משימות" },
           { id: "gantt" as Tab, label: "ציר זמן" },
           { id: "budget" as Tab, label: "תקציב" },
+          { id: "docs" as Tab, label: "מסמכים" },
           { id: "comments" as Tab, label: "הערות" },
         ].map(t => (
           <button
@@ -1019,6 +1077,59 @@ export default function ProjectPage() {
         </div>
       )}
 
+      {/* Tab: Docs */}
+      {tab === "docs" && (
+        <div className="flex-1 overflow-auto px-8 py-6">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-sm font-semibold" style={{ color: "#011e41" }}>מסמכי פרויקט</span>
+            <label className={`px-4 py-1.5 rounded-lg text-sm font-medium text-white cursor-pointer ${docsUploading ? "opacity-60" : ""}`} style={{ background: "#011e41" }}>
+              {docsUploading ? "מעלה..." : "+ העלה מסמך"}
+              <input
+                type="file"
+                className="hidden"
+                disabled={docsUploading}
+                onChange={e => { const f = e.target.files?.[0]; if (f) uploadProjectDoc(f); e.target.value = ""; }}
+              />
+            </label>
+          </div>
+
+          {projectDocs.length === 0 ? (
+            <div className="text-gray-400 text-sm py-8 text-center">אין מסמכים לפרויקט זה</div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {projectDocs.map(doc => {
+                const isTaskDoc = !!doc.task_id;
+                const taskName = isTaskDoc ? tasks.find(t => t.id === doc.task_id)?.title : null;
+                return (
+                  <div key={doc.id} className="bg-white rounded-xl px-4 py-3 shadow-sm flex items-center gap-3 group">
+                    <span className="text-xl flex-shrink-0">📄</span>
+                    <div className="flex-1 min-w-0">
+                      <a
+                        href={`${API_BASE}${doc.path}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-sm font-medium hover:underline"
+                        style={{ color: "#011e41" }}
+                      >{doc.name}</a>
+                      {taskName && <div className="text-xs text-gray-400 mt-0.5">📌 {taskName}</div>}
+                      {doc.expiry_date && (
+                        <div className="text-xs text-orange-500 mt-0.5">
+                          תוקף: {new Date(doc.expiry_date).toLocaleDateString("he-IL")}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => deleteDoc(doc.id)}
+                      className="opacity-0 group-hover:opacity-100 text-xs text-red-400 hover:text-red-600 px-2 py-1 rounded transition-opacity"
+                    >מחק</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Tab: Comments */}
       {tab === "comments" && (
         <div className="flex-1 flex overflow-hidden">
@@ -1213,6 +1324,43 @@ export default function ProjectPage() {
                     placeholder="הוסף הערה..."
                     className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-blue-300 resize-none"
                   />
+                </div>
+
+                {/* Documents */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs text-gray-400">קבצים מצורפים</label>
+                    <label className={`text-xs px-2 py-1 rounded cursor-pointer text-white ${taskDocsUploading ? "opacity-60" : ""}`} style={{ background: "#011e41" }}>
+                      {taskDocsUploading ? "..." : "+ צרף"}
+                      <input
+                        type="file"
+                        className="hidden"
+                        disabled={taskDocsUploading}
+                        onChange={e => { const f = e.target.files?.[0]; if (f) uploadTaskDoc(f, t.id); e.target.value = ""; }}
+                      />
+                    </label>
+                  </div>
+                  {taskDocs.length === 0 ? (
+                    <div className="text-xs text-gray-300 py-1">אין קבצים מצורפים</div>
+                  ) : (
+                    <div className="space-y-1">
+                      {taskDocs.map(doc => (
+                        <div key={doc.id} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 group">
+                          <span className="text-base">📄</span>
+                          <a
+                            href={`${API_BASE}${doc.path}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex-1 text-xs text-blue-600 hover:underline truncate"
+                          >{doc.name}</a>
+                          <button
+                            onClick={() => deleteDoc(doc.id)}
+                            className="opacity-0 group-hover:opacity-100 text-xs text-red-400 hover:text-red-600 transition-opacity"
+                          >✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Comments */}

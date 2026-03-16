@@ -1,13 +1,19 @@
+import os
+import uuid as uuid_lib
 from datetime import datetime, timezone, timedelta
+from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
 from ..deps import get_current_user_id, get_db
 
 router = APIRouter(prefix="/tenants/{tenant_id}/documents", tags=["documents"])
+
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
 def _get_document_or_404(db: Session, tenant_id: UUID, document_id: UUID) -> models.Document:
@@ -23,6 +29,46 @@ def _get_document_or_404(db: Session, tenant_id: UUID, document_id: UUID) -> mod
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="מסמך לא נמצא")
     return document
+
+
+@router.post("/upload", response_model=schemas.DocumentRead, status_code=status.HTTP_201_CREATED)
+async def upload_document(
+    tenant_id: UUID,
+    file: UploadFile = File(...),
+    project_id: Optional[str] = Form(None),
+    task_id: Optional[str] = Form(None),
+    expiry_date: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    user_id: str | None = Depends(get_current_user_id),
+):
+    content = await file.read()
+    ext = os.path.splitext(file.filename or "")[1]
+    stored_name = f"{uuid_lib.uuid4()}{ext}"
+    file_path = os.path.join(UPLOAD_DIR, stored_name)
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+    expiry_dt = None
+    if expiry_date:
+        try:
+            expiry_dt = datetime.fromisoformat(expiry_date)
+        except ValueError:
+            pass
+
+    doc = models.Document(
+        id=uuid_lib.uuid4(),
+        tenant_id=str(tenant_id),
+        project_id=project_id or None,
+        task_id=task_id or None,
+        name=file.filename or stored_name,
+        path=f"/uploads/{stored_name}",
+        expiry_date=expiry_dt,
+        created_by=user_id,
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+    return doc
 
 
 @router.post("/", response_model=schemas.DocumentRead, status_code=status.HTTP_201_CREATED)
@@ -50,7 +96,6 @@ def list_expiring_documents(
     days: int = Query(default=30, ge=0, le=365, description="מספר ימים קדימה לבדיקה"),
     db: Session = Depends(get_db),
 ):
-    """מחזיר מסמכים שתוקפם פג או יפוג תוך N ימים (ברירת מחדל: 30)."""
     now = datetime.now(timezone.utc)
     deadline = now + timedelta(days=days)
     documents = (
@@ -67,7 +112,6 @@ def list_expiring_documents(
     result = []
     for doc in documents:
         expiry = doc.expiry_date
-        # SQLite מחזיר datetime naive — נוסיף tzinfo לחישוב
         if expiry.tzinfo is None:
             expiry = expiry.replace(tzinfo=timezone.utc)
         days_left = (expiry - now).days
@@ -91,12 +135,21 @@ def read_document(tenant_id: UUID, document_id: UUID, db: Session = Depends(get_
 
 
 @router.get("/", response_model=list[schemas.DocumentRead])
-def list_documents(tenant_id: UUID, db: Session = Depends(get_db)):
-    return (
-        db.query(models.Document)
-        .filter(models.Document.tenant_id == tenant_id, models.Document.deleted_at.is_(None))
-        .all()
+def list_documents(
+    tenant_id: UUID,
+    project_id: Optional[UUID] = Query(None),
+    task_id: Optional[UUID] = Query(None),
+    db: Session = Depends(get_db),
+):
+    q = db.query(models.Document).filter(
+        models.Document.tenant_id == tenant_id,
+        models.Document.deleted_at.is_(None),
     )
+    if project_id:
+        q = q.filter(models.Document.project_id == str(project_id))
+    if task_id:
+        q = q.filter(models.Document.task_id == str(task_id))
+    return q.order_by(models.Document.created_at.desc()).all()
 
 
 @router.put("/{document_id}", response_model=schemas.DocumentRead)

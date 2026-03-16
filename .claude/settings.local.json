@@ -25,7 +25,9 @@
       "Bash(DATABASE_URL=\"postgresql://postgres:EKbafZlkQzMtmMtCEeexhGukxmjbUjAo@ballast.proxy.rlwy.net:16855/railway\" python -m alembic upgrade head)",
       "Bash(echo \"resend>=2.0.0\")",
       "Bash(\"d:/Users/hillel_tz/Desktop/maslul-v3/requirements.txt\")",
-      "Bash(python3 -c \":*)"
+      "Bash(python3 -c \":*)",
+      "Bash(python -c \":*)",
+      "Bash(railway --version)"
     ]
   }
 }
