@@ -184,11 +184,19 @@ DDL = [
     "ALTER TABLE contacts ADD COLUMN IF NOT EXISTS notes TEXT",
     "ALTER TABLE documents ADD COLUMN IF NOT EXISTS task_id VARCHAR(36)",
     "ALTER TABLE documents ADD COLUMN IF NOT EXISTS stage_id VARCHAR(36)",
-    # ---- New tables (no FK constraints — avoids type mismatch with existing UUID cols) ----
+    # ---- New tables: drop if wrong type (VARCHAR instead of UUID), recreate with UUID ----
+    # budget_entries
+    """DO $$ BEGIN
+        IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='budget_entries' AND column_name='id'
+              AND data_type='character varying'
+        ) THEN DROP TABLE IF EXISTS budget_entries CASCADE; END IF;
+    END $$""",
     """CREATE TABLE IF NOT EXISTS budget_entries (
-        id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
-        project_id VARCHAR(36) NOT NULL,
+        id UUID PRIMARY KEY,
+        tenant_id UUID NOT NULL,
+        project_id UUID NOT NULL,
         category VARCHAR NOT NULL,
         description VARCHAR NOT NULL,
         vendor VARCHAR,
@@ -199,22 +207,39 @@ DDL = [
         created_at TIMESTAMP,
         updated_at TIMESTAMP,
         deleted_at TIMESTAMP,
-        created_by VARCHAR(36)
+        created_by UUID
     )""",
+    # task_comments
+    """DO $$ BEGIN
+        IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='task_comments' AND column_name='id'
+              AND data_type='character varying'
+        ) THEN DROP TABLE IF EXISTS task_comments CASCADE; END IF;
+    END $$""",
     """CREATE TABLE IF NOT EXISTS task_comments (
-        id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
-        task_id VARCHAR(36) NOT NULL,
+        id UUID PRIMARY KEY,
+        tenant_id UUID NOT NULL,
+        task_id UUID NOT NULL,
         content TEXT NOT NULL,
         created_at TIMESTAMP,
         updated_at TIMESTAMP,
         deleted_at TIMESTAMP,
-        created_by VARCHAR(36)
+        created_by UUID
     )""",
+    # quotes
+    """DO $$ BEGIN
+        IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='quotes' AND column_name='id'
+              AND data_type='character varying'
+        ) THEN DROP TABLE IF EXISTS payment_milestones CASCADE;
+             DROP TABLE IF EXISTS quotes CASCADE; END IF;
+    END $$""",
     """CREATE TABLE IF NOT EXISTS quotes (
-        id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
-        project_id VARCHAR(36),
+        id UUID PRIMARY KEY,
+        tenant_id UUID NOT NULL,
+        project_id UUID,
         vendor VARCHAR,
         title VARCHAR NOT NULL,
         total_amount FLOAT,
@@ -225,13 +250,21 @@ DDL = [
         created_at TIMESTAMP,
         updated_at TIMESTAMP,
         deleted_at TIMESTAMP,
-        created_by VARCHAR(36)
+        created_by UUID
     )""",
+    # payment_milestones
+    """DO $$ BEGIN
+        IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='payment_milestones' AND column_name='id'
+              AND data_type='character varying'
+        ) THEN DROP TABLE IF EXISTS payment_milestones CASCADE; END IF;
+    END $$""",
     """CREATE TABLE IF NOT EXISTS payment_milestones (
-        id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
-        quote_id VARCHAR(36) NOT NULL,
-        project_id VARCHAR(36),
+        id UUID PRIMARY KEY,
+        tenant_id UUID NOT NULL,
+        quote_id UUID NOT NULL,
+        project_id UUID,
         description VARCHAR NOT NULL,
         amount FLOAT NOT NULL,
         due_date TIMESTAMP,
@@ -240,7 +273,7 @@ DDL = [
         created_at TIMESTAMP,
         updated_at TIMESTAMP,
         deleted_at TIMESTAMP,
-        created_by VARCHAR(36)
+        created_by UUID
     )""",
 ]
 
