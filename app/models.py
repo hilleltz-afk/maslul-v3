@@ -250,6 +250,20 @@ class PaymentMilestone(Base):
     created_by = Column(GUID(), ForeignKey("users.id"), nullable=True)
 
 
+class ProjectMember(Base):
+    """חברי צוות לפרויקט — תפקיד והרשאות ברמת הפרויקט."""
+    __tablename__ = "project_members"
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(GUID(), ForeignKey("tenants.id"), nullable=False)
+    project_id = Column(GUID(), ForeignKey("projects.id"), nullable=False)
+    user_id = Column(GUID(), ForeignKey("users.id"), nullable=False)
+    role = Column(String, nullable=False, default="member")  # manager / member / viewer
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True)
+    created_by = Column(GUID(), ForeignKey("users.id"), nullable=True)
+
+
 class EmailPipelineStatus(PyEnum):
     TRIAGED_OUT = "TRIAGED_OUT"   # לא רלוונטי — נסנן
     PENDING = "PENDING"            # ממתין לאישור אנושי

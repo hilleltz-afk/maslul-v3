@@ -182,8 +182,12 @@ def invite_user(
         created_by=inviter_id,
     )
     db.add(user)
-    db.commit()
-    db.refresh(user)
+    try:
+        db.commit()
+        db.refresh(user)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"שגיאה ביצירת המשתמש: {str(e)[:200]}")
 
     # שלח אימייל הזמנה
     try:

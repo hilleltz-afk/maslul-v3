@@ -95,6 +95,11 @@ export default function ProjectPage() {
   const quoteFileRef = useRef<HTMLInputElement>(null);
   const [addingMilestoneToQuote, setAddingMilestoneToQuote] = useState<string | null>(null);
   const [newMilestone, setNewMilestone] = useState({ description: "", amount: "", due_date: "" });
+  // Project members
+  const [projectMembers, setProjectMembers] = useState<{id:string;user_id:string;role:string;user_name?:string;user_email?:string}[]>([]);
+  const [addingMember, setAddingMember] = useState(false);
+  const [newMemberUserId, setNewMemberUserId] = useState("");
+  const [newMemberRole, setNewMemberRole] = useState("member");
 
   // Comments state
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -370,6 +375,36 @@ export default function ProjectPage() {
     setStages(prev => prev.filter(s => s.id !== stageId));
   }
 
+  async function loadProjectMembers() {
+    const data = await apiFetch(`/tenants/${TENANT_ID}/projects/${projectId}/members/`).catch(() => []);
+    setProjectMembers(data);
+  }
+
+  async function addProjectMember() {
+    if (!newMemberUserId) return;
+    const m = await apiFetch(`/tenants/${TENANT_ID}/projects/${projectId}/members/`, {
+      method: "POST",
+      body: JSON.stringify({ user_id: newMemberUserId, role: newMemberRole }),
+    });
+    setProjectMembers(prev => [...prev, m]);
+    setAddingMember(false);
+    setNewMemberUserId("");
+    setNewMemberRole("member");
+  }
+
+  async function updateMemberRole(userId: string, role: string) {
+    const m = await apiFetch(`/tenants/${TENANT_ID}/projects/${projectId}/members/${userId}`, {
+      method: "PUT",
+      body: JSON.stringify({ role }),
+    });
+    setProjectMembers(prev => prev.map(p => p.user_id === userId ? { ...p, role: m.role } : p));
+  }
+
+  async function removeMember(userId: string) {
+    await apiFetch(`/tenants/${TENANT_ID}/projects/${projectId}/members/${userId}`, { method: "DELETE" });
+    setProjectMembers(prev => prev.filter(p => p.user_id !== userId));
+  }
+
   async function saveProjectSettings() {
     setSavingProject(true);
     try {
@@ -508,7 +543,7 @@ export default function ProjectPage() {
         <h1 className="text-xl font-bold" style={{ color: "#011e41" }}>{project.name}</h1>
         <span className="text-xs text-gray-400">גוש {project.gush} חלקה {project.helka}</span>
         <button
-          onClick={() => { setProjectForm({ name: project.name, gush: project.gush, helka: project.helka, address: project.address || "", budget_total: project.budget_total?.toString() || "" }); setShowProjectSettings(true); }}
+          onClick={() => { setProjectForm({ name: project.name, gush: project.gush, helka: project.helka, address: project.address || "", budget_total: project.budget_total?.toString() || "" }); setShowProjectSettings(true); loadProjectMembers(); }}
           className="mr-auto text-gray-400 hover:text-gray-600 text-sm px-2 py-1 rounded hover:bg-gray-100"
           title="הגדרות פרויקט"
         >⚙</button>
@@ -517,9 +552,9 @@ export default function ProjectPage() {
       {/* Project settings modal */}
       {showProjectSettings && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowProjectSettings(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <h2 className="text-lg font-bold mb-4" style={{ color: "#011e41" }}>הגדרות פרויקט</h2>
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 mb-5">
               {[
                 { key: "name", label: "שם הפרויקט" },
                 { key: "gush", label: "גוש" },
@@ -538,7 +573,70 @@ export default function ProjectPage() {
                 </div>
               ))}
             </div>
-            <div className="flex gap-2 mt-5 justify-end">
+
+            {/* Team section */}
+            <div className="border-t border-gray-100 pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-semibold" style={{ color: "#011e41" }}>צוות הפרויקט</span>
+                <button onClick={() => setAddingMember(true)} className="text-xs px-2 py-1 rounded text-white" style={{ background: "#011e41" }}>+ הוסף</button>
+              </div>
+              {projectMembers.length === 0 && !addingMember && (
+                <p className="text-xs text-gray-400">לא הוקצו חברי צוות לפרויקט זה</p>
+              )}
+              <div className="space-y-1.5 mb-2">
+                {projectMembers.map(m => (
+                  <div key={m.user_id} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">{m.user_name || m.user_email || m.user_id}</div>
+                      {m.user_email && m.user_name && <div className="text-xs text-gray-400 truncate">{m.user_email}</div>}
+                    </div>
+                    <select
+                      value={m.role}
+                      onChange={e => updateMemberRole(m.user_id, e.target.value)}
+                      className="text-xs border border-gray-200 rounded px-2 py-1 outline-none"
+                    >
+                      <option value="manager">מנהל פרויקט</option>
+                      <option value="member">חבר צוות</option>
+                      <option value="viewer">צופה</option>
+                    </select>
+                    <button onClick={() => removeMember(m.user_id)} className="text-gray-300 hover:text-red-500 text-sm px-1">✕</button>
+                  </div>
+                ))}
+              </div>
+              {addingMember && (
+                <div className="flex gap-2 items-end flex-wrap bg-blue-50 rounded-lg p-3">
+                  <div className="flex-1 min-w-40">
+                    <label className="text-xs text-gray-500 mb-1 block">משתמש</label>
+                    <select
+                      value={newMemberUserId}
+                      onChange={e => setNewMemberUserId(e.target.value)}
+                      className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm outline-none"
+                    >
+                      <option value="">— בחר משתמש —</option>
+                      {users.filter(u => !projectMembers.some(m => m.user_id === u.id)).map(u => (
+                        <option key={u.id} value={u.id}>{u.name} ({u.email || ""})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">תפקיד</label>
+                    <select
+                      value={newMemberRole}
+                      onChange={e => setNewMemberRole(e.target.value)}
+                      className="border border-gray-200 rounded px-2 py-1.5 text-sm outline-none"
+                    >
+                      <option value="manager">מנהל פרויקט</option>
+                      <option value="member">חבר צוות</option>
+                      <option value="viewer">צופה</option>
+                    </select>
+                  </div>
+                  <button onClick={addProjectMember} className="text-xs px-3 py-1.5 rounded text-white" style={{ background: "#27ae60" }}>הוסף</button>
+                  <button onClick={() => setAddingMember(false)} className="text-xs text-gray-400 px-2">ביטול</button>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 mt-5 justify-end border-t border-gray-100 pt-4">
               <button onClick={() => setShowProjectSettings(false)} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">ביטול</button>
               <button onClick={saveProjectSettings} disabled={savingProject} className="px-4 py-2 rounded-lg text-sm text-white font-medium" style={{ background: "#011e41", opacity: savingProject ? 0.6 : 1 }}>
                 {savingProject ? "שומר..." : "שמור"}

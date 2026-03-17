@@ -184,6 +184,18 @@ DDL = [
     "ALTER TABLE contacts ADD COLUMN IF NOT EXISTS notes TEXT",
     "ALTER TABLE documents ADD COLUMN IF NOT EXISTS task_id VARCHAR(36)",
     "ALTER TABLE documents ADD COLUMN IF NOT EXISTS stage_id VARCHAR(36)",
+    # ---- project_members ----
+    """CREATE TABLE IF NOT EXISTS project_members (
+        id UUID PRIMARY KEY,
+        tenant_id UUID NOT NULL,
+        project_id UUID NOT NULL,
+        user_id UUID NOT NULL,
+        role VARCHAR NOT NULL DEFAULT 'member',
+        created_at TIMESTAMP,
+        updated_at TIMESTAMP,
+        deleted_at TIMESTAMP,
+        created_by UUID
+    )""",
     # ---- New tables: drop if wrong type (VARCHAR instead of UUID), recreate with UUID ----
     # budget_entries
     """DO $$ BEGIN
