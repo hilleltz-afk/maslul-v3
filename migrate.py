@@ -184,11 +184,11 @@ DDL = [
     "ALTER TABLE contacts ADD COLUMN IF NOT EXISTS notes TEXT",
     "ALTER TABLE documents ADD COLUMN IF NOT EXISTS task_id VARCHAR(36)",
     "ALTER TABLE documents ADD COLUMN IF NOT EXISTS stage_id VARCHAR(36)",
-    # ---- New tables ----
+    # ---- New tables (no FK constraints — avoids type mismatch with existing UUID cols) ----
     """CREATE TABLE IF NOT EXISTS budget_entries (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) REFERENCES tenants(id) NOT NULL,
-        project_id VARCHAR(36) REFERENCES projects(id) NOT NULL,
+        tenant_id VARCHAR(36) NOT NULL,
+        project_id VARCHAR(36) NOT NULL,
         category VARCHAR NOT NULL,
         description VARCHAR NOT NULL,
         vendor VARCHAR,
@@ -203,8 +203,8 @@ DDL = [
     )""",
     """CREATE TABLE IF NOT EXISTS task_comments (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) REFERENCES tenants(id) NOT NULL,
-        task_id VARCHAR(36) REFERENCES tasks(id) NOT NULL,
+        tenant_id VARCHAR(36) NOT NULL,
+        task_id VARCHAR(36) NOT NULL,
         content TEXT NOT NULL,
         created_at TIMESTAMP,
         updated_at TIMESTAMP,
@@ -213,8 +213,8 @@ DDL = [
     )""",
     """CREATE TABLE IF NOT EXISTS quotes (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) REFERENCES tenants(id) NOT NULL,
-        project_id VARCHAR(36) REFERENCES projects(id),
+        tenant_id VARCHAR(36) NOT NULL,
+        project_id VARCHAR(36),
         vendor VARCHAR,
         title VARCHAR NOT NULL,
         total_amount FLOAT,
@@ -229,9 +229,9 @@ DDL = [
     )""",
     """CREATE TABLE IF NOT EXISTS payment_milestones (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) REFERENCES tenants(id) NOT NULL,
-        quote_id VARCHAR(36) REFERENCES quotes(id) NOT NULL,
-        project_id VARCHAR(36) REFERENCES projects(id),
+        tenant_id VARCHAR(36) NOT NULL,
+        quote_id VARCHAR(36) NOT NULL,
+        project_id VARCHAR(36),
         description VARCHAR NOT NULL,
         amount FLOAT NOT NULL,
         due_date TIMESTAMP,
