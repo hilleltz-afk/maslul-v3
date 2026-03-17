@@ -1,7 +1,7 @@
 """
 ניהול הצעות מחיר — העלאת PDF, ניתוח AI, ואבני דרך לתשלום.
 """
-import io
+import base64
 import json
 import os
 import uuid
@@ -15,21 +15,6 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..deps import get_current_user_id, get_db
-
-
-def _extract_pdf_text(pdf_bytes: bytes) -> str:
-    """חלץ טקסט מה-PDF באמצעות pypdf."""
-    try:
-        import pypdf
-        reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
-        pages = []
-        for page in reader.pages:
-            text = page.extract_text()
-            if text:
-                pages.append(text)
-        return "\n\n".join(pages)
-    except Exception:
-        return ""
 
 router = APIRouter(prefix="/tenants/{tenant_id}/quotes", tags=["quotes"])
 
@@ -72,27 +57,18 @@ def _analyse_pdf_with_claude(
     filename: str,
     projects: list[models.Project],
 ) -> dict:
-    """חלץ טקסט מה-PDF ושלח ל-Claude לניתוח."""
+    """שלח PDF ישירות ל-Claude (document block) לניתוח מלא."""
     project_list = "\n".join(
         f"- {p.name} (id: {p.id}, גוש {p.gush} חלקה {p.helka})"
         for p in projects
     )
-
-    pdf_text = _extract_pdf_text(pdf_bytes)
-    if not pdf_text.strip():
-        pdf_text = f"[לא הצלחתי לחלץ טקסט מהקובץ: {filename}]"
 
     prompt = f"""אתה מנתח הצעות מחיר לפרויקטים בנדל"ן עבור חברת Hadas Capital.
 
 להלן רשימת הפרויקטים הקיימים במערכת:
 {project_list if project_list else "אין פרויקטים קיימים"}
 
-להלן תוכן הצעת המחיר (חולץ מ-PDF):
----
-{pdf_text[:8000]}
----
-
-נתח את ההצעה וחלץ את המידע הבא בפורמט JSON בלבד — ללא טקסט נוסף:
+נתח את הצעת המחיר המצורפת וחלץ את המידע הבא בפורמט JSON בלבד — ללא טקסט נוסף:
 
 {{
   "title": "שם/תיאור קצר של ההצעה",
@@ -117,10 +93,28 @@ def _analyse_pdf_with_claude(
 """
 
     client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    pdf_b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
+
     message = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=2048,
-        messages=[{"role": "user", "content": prompt}],
+        extra_headers={"anthropic-beta": "pdfs-2024-09-25"},
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "document",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "application/pdf",
+                            "data": pdf_b64,
+                        },
+                    },
+                    {"type": "text", "text": prompt},
+                ],
+            }
+        ],
     )
 
     text = message.content[0].text.strip()
