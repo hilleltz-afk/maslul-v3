@@ -27,9 +27,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         {children}
-        <footer dir="rtl" style={{ textAlign: "center", padding: "12px", fontSize: "11px", color: "#aaa", borderTop: "1px solid #eee", marginTop: "auto" }}>
-          כל הזכויות שמורות להלל צייגר
-        </footer>
       </body>
     </html>
   );

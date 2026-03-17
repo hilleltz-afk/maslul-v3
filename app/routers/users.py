@@ -163,37 +163,63 @@ def invite_user(
     db: Session = Depends(get_db),
     inviter_id: str | None = Depends(get_current_user_id),
 ):
-    # בדוק אם כבר קיים
-    existing = (
+    # בדוק אם קיים פעיל
+    existing_active = (
         db.query(models.User)
         .filter(models.User.email == invite_in.email, models.User.deleted_at.is_(None))
         .first()
     )
-    if existing:
+    if existing_active:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="משתמש עם אימייל זה כבר קיים")
 
-    user = models.User(
-        id=uuid4(),
-        tenant_id=str(tenant_id),
-        email=invite_in.email,
-        name=invite_in.name,
-        role=invite_in.role or "member",
-        status="active",  # הזמנה ישירה מאדמין — מאושרת מיד
-        created_by=inviter_id,
+    # בדוק אם קיים אך נמחק (soft-delete) — אם כן, שחזר במקום ליצור שורה חדשה
+    existing_deleted = (
+        db.query(models.User)
+        .filter(models.User.email == invite_in.email, models.User.deleted_at.isnot(None))
+        .first()
     )
-    db.add(user)
-    try:
-        db.commit()
-        db.refresh(user)
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"שגיאה ביצירת המשתמש: {str(e)[:200]}")
+    if existing_deleted:
+        existing_deleted.name = invite_in.name
+        existing_deleted.role = invite_in.role or "member"
+        existing_deleted.status = "active"
+        existing_deleted.deleted_at = None
+        existing_deleted.updated_at = datetime.now(timezone.utc)
+        try:
+            db.commit()
+            db.refresh(existing_deleted)
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"שגיאה בשחזור המשתמש: {str(e)[:200]}")
+        user = existing_deleted
+    else:
+        user = models.User(
+            id=uuid4(),
+            tenant_id=str(tenant_id),
+            email=invite_in.email,
+            name=invite_in.name,
+            role=invite_in.role or "member",
+            status="active",
+            created_by=inviter_id,
+        )
+        db.add(user)
+        try:
+            db.commit()
+            db.refresh(user)
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"שגיאה ביצירת המשתמש: {str(e)[:200]}")
 
     # שלח אימייל הזמנה
+    import logging
+    _log = logging.getLogger(__name__)
     try:
         inviter = db.query(models.User).filter(models.User.id == inviter_id, models.User.deleted_at.is_(None)).first() if inviter_id else None
-        notify_user_invited(user.email, user.name, invited_by=inviter.name if inviter else "")
-    except Exception:
-        pass
+        sent = notify_user_invited(user.email, user.name, invited_by=inviter.name if inviter else "")
+        if not sent:
+            _log.warning(f"invite email NOT sent to {user.email} — check RESEND_API_KEY / RESEND_FROM env vars")
+        else:
+            _log.info(f"invite email sent to {user.email}")
+    except Exception as email_err:
+        _log.error(f"invite email exception for {user.email}: {email_err}", exc_info=True)
 
     return user

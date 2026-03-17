@@ -74,8 +74,51 @@ def ingest_email(
             .filter(models.Project.tenant_id == str(tenant_id), models.Project.deleted_at.is_(None))
             .all()
         )
-        project_names = [p.name for p in projects]
-        analysis = ai_service.analyse_email(req.sender, req.subject, req.body, project_names)
+
+        # הכנת מידע עשיר על פרויקטים (כולל alias-ים)
+        aliases_rows = (
+            db.query(models.ProjectAlias)
+            .filter(models.ProjectAlias.tenant_id == str(tenant_id), models.ProjectAlias.deleted_at.is_(None))
+            .all()
+        )
+        aliases_by_project: dict[str, list[str]] = {}
+        for a in aliases_rows:
+            aliases_by_project.setdefault(str(a.project_id), []).append(a.alias)
+
+        projects_data = []
+        for p in projects:
+            entry = {
+                "id": str(p.id),
+                "name": p.name,
+                "gush": p.gush or "",
+                "helka": p.helka or "",
+                "address": p.address or "",
+            }
+            extras = aliases_by_project.get(str(p.id), [])
+            if extras:
+                entry["name"] = p.name + " / " + " / ".join(extras)
+            projects_data.append(entry)
+
+        # זיהוי שולח לפי אימייל בין אנשי הקשר
+        contact = (
+            db.query(models.Contact)
+            .filter(
+                models.Contact.tenant_id == str(tenant_id),
+                models.Contact.email == req.sender,
+                models.Contact.deleted_at.is_(None),
+            )
+            .first()
+        )
+        contact_context = ""
+        if contact:
+            profession = f" ({contact.profession})" if contact.profession else ""
+            contact_context = f"שולח מזוהה באנשי הקשר: {contact.name}{profession}"
+
+        analysis = ai_service.analyse_email(
+            req.sender, req.subject, req.body,
+            projects=projects_data,
+            contact_context=contact_context,
+        )
 
         # Fuzzy match: מצא project_id לפי שם שהוחזר מה-AI
         matched_project_id = None
@@ -87,17 +130,33 @@ def ingest_email(
                 gush="",
                 helka="",
             )
-            if candidates and candidates[0].similarity >= 0.7:
+            if candidates and candidates[0].similarity >= 0.6:
                 matched_project_id = candidates[0].id
+
+        # פרסור תאריך יעד מוצע
+        suggested_due_dt = None
+        if analysis.suggested_due_date:
+            try:
+                from datetime import datetime as dt
+                suggested_due_dt = dt.strptime(analysis.suggested_due_date, "%Y-%m-%d")
+            except ValueError:
+                pass
 
         item.suggested_project_id = matched_project_id
         item.project_match_confidence = analysis.confidence_project_match
         item.suggested_task_name = analysis.suggested_task_name
         item.suggested_priority = analysis.suggested_priority
         item.suggested_assignee = analysis.suggested_assignee
+        item.suggested_due_date = suggested_due_dt
         item.has_attachments = 1 if analysis.has_attachments else 0
         item.budget_mentioned = analysis.budget_mentioned
-        item.analysis_notes = analysis.notes
+        # שמור הערות + שם איש קשר שזוהה
+        notes_parts = []
+        if analysis.notes:
+            notes_parts.append(analysis.notes)
+        if contact_context:
+            notes_parts.append(contact_context)
+        item.analysis_notes = " | ".join(notes_parts) if notes_parts else None
 
     db.add(item)
     db.commit()
@@ -149,6 +208,12 @@ def approve_email(
     }
     if req.assignee_id:
         task_data["assignee_id"] = str(req.assignee_id)
+    if req.due_date:
+        try:
+            from datetime import datetime as dt
+            task_data["end_date"] = dt.strptime(req.due_date, "%Y-%m-%d")
+        except ValueError:
+            pass
 
     task = crud.create_entity(
         db, models.Task, task_data,

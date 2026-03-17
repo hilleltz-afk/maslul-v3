@@ -417,6 +417,11 @@ export default function Sidebar() {
           )}
         </div>
 
+        {/* Copyright */}
+        <div className="px-6 py-1.5 text-center" style={{ fontSize: 10, color: "rgba(255,255,255,0.25)" }}>
+          כל הזכויות שמורות להלל צייגר
+        </div>
+
         {/* Profile + Logout */}
         <div className="px-6 py-4 border-t border-white/10 flex items-center justify-between">
           <Link

@@ -184,6 +184,9 @@ DDL = [
     "ALTER TABLE contacts ADD COLUMN IF NOT EXISTS notes TEXT",
     "ALTER TABLE documents ADD COLUMN IF NOT EXISTS task_id VARCHAR(36)",
     "ALTER TABLE documents ADD COLUMN IF NOT EXISTS stage_id VARCHAR(36)",
+    # ---- Fix: allow re-inviting after soft-delete (partial unique index on email) ----
+    "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_email_key",
+    "CREATE UNIQUE INDEX IF NOT EXISTS users_email_active_unique ON users(email) WHERE deleted_at IS NULL",
     # ---- project_members ----
     """CREATE TABLE IF NOT EXISTS project_members (
         id UUID PRIMARY KEY,

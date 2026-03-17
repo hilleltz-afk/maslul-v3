@@ -206,55 +206,69 @@ class EmailAnalysisResult(BaseModel):
     suggested_task_name: str
     suggested_priority: str  # low / medium / high / urgent
     suggested_assignee: Optional[str] = None
-    suggested_due_date: Optional[str] = None   # ISO date string
+    suggested_due_date: Optional[str] = None   # ISO date string YYYY-MM-DD
     has_attachments: bool = False
     budget_mentioned: Optional[float] = None
     notes: Optional[str] = None
+    matched_contact_name: Optional[str] = None  # שם איש קשר שזוהה לפי אימייל
 
 
 _EMAIL_TRIAGE_SYSTEM = """
-אתה מסנן מיילים עבור חברת נדל"ן ותכנון ישראלית.
+אתה מסנן מיילים עבור חברת נדל"ן ותכנון ישראלית בשם Hadas Capital.
 קרא את נושא המייל, השולח, ו-100 המילים הראשונות.
-החלט האם המייל רלוונטי לעבודה (פרויקטים, רשויות, קבלנים, היתרים, משימות, פגישות).
 
-החזר JSON בלבד:
+מיילים רלוונטיים: פרויקטים, רשויות תכנון, קבלנים, היתרי בנייה, חוזים, תשלומים, פגישות עסקיות,
+ אישורים, עיריות, ועדות, בנקים, עורכי דין, שמאים, מודדים, מחירים, לוחות זמנים.
+
+מיילים לא רלוונטיים: ניוזלטרים, פרסומות, מיילים אישיים לחלוטין, אישורי הרשמה אוטומטיים,
+ עדכוני תוכנה, חשבוניות שירות אחזקה כלליות שאינן קשורות לפרויקט.
+
+החזר JSON בלבד (ללא ```):
 {
   "is_relevant": true/false,
   "confidence": 0.0-1.0,
-  "reason": "הסבר קצר"
+  "reason": "הסבר קצר בעברית"
 }
 """
 
 _EMAIL_ANALYSIS_SYSTEM = """
-אתה עוזר ניהול פרויקטים לחברת נדל"ן ישראלית.
-קרא את המייל המלא וזהה:
-- לאיזה פרויקט הוא שייך (לפי שם/גוש/חלקה אם מוזכר)
-- מהי המשימה המוצעת
-- מי הנמען המתאים
-- האם יש תאריך יעד
-- האם יש קבצים מצורפים
-- האם מוזכר סכום כסף
+אתה עוזר ניהול פרויקטים לחברת נדל"ן ישראלית בשם Hadas Capital.
+קרא את המייל המלא וזהה את הפרטים הבאים:
 
-החזר JSON בלבד:
+1. לאיזה פרויקט הוא שייך — השווה לרשימת הפרויקטים שסופקה. חפש שמות, מספרי גוש/חלקה, כתובות.
+2. מהי המשימה הנדרשת — נסח בעברית, ברורה ותמציתית.
+3. רמת עדיפות — urgent אם יש דדליין קרוב / דחיפות מפורשת, high אם דורש פעולה מהירה, medium ברירת מחדל.
+4. תאריך יעד — אם מוזכר תאריך ספציפי בטקסט.
+5. סכום כסף — אם מוזכר סכום (בש"ח, ₪, ILS, דולרים וכו').
+
+החזר JSON בלבד (ללא ```):
 {
-  "project_name_guess": "שם הפרויקט או null",
+  "project_name_guess": "שם הפרויקט כפי שמוזכר במייל, או null",
   "confidence_project_match": 0.0-1.0,
-  "suggested_task_name": "שם המשימה",
+  "suggested_task_name": "שם המשימה בעברית",
   "suggested_priority": "low/medium/high/urgent",
-  "suggested_assignee": "שם או null",
-  "suggested_due_date": "YYYY-MM-DD או null",
+  "suggested_assignee": "שם איש צוות רלוונטי אם מוזכר, או null",
+  "suggested_due_date": "YYYY-MM-DD אם מוזכר תאריך, אחרת null",
   "has_attachments": true/false,
-  "budget_mentioned": 0.0 או null,
-  "notes": "הערות נוספות או null"
+  "budget_mentioned": סכום מספרי בש\"ח אם מוזכר אחרת null,
+  "notes": "הערות תמציתיות לגבי תוכן המייל, או null"
 }
 """
+
+
+def _parse_json(raw: str) -> dict:
+    """פרסור JSON עם סטריפ של code fences אם קיימות."""
+    import json, re
+    raw = raw.strip()
+    raw = re.sub(r"^```(?:json)?\s*", "", raw)
+    raw = re.sub(r"\s*```$", "", raw)
+    return json.loads(raw.strip())
 
 
 def triage_email(sender: str, subject: str, body_preview: str) -> EmailTriageResult:
     """
     Step 1 — Claude Haiku: האם המייל רלוונטי? מהיר וזול.
     """
-    import json
     client = _get_client()
     user_content = f"שולח: {sender}\nנושא: {subject}\nתוכן: {body_preview}"
     message = client.messages.create(
@@ -263,7 +277,7 @@ def triage_email(sender: str, subject: str, body_preview: str) -> EmailTriageRes
         system=_EMAIL_TRIAGE_SYSTEM,
         messages=[{"role": "user", "content": user_content}],
     )
-    data = json.loads(message.content[0].text.strip())
+    data = _parse_json(message.content[0].text)
     return EmailTriageResult(**data)
 
 
@@ -271,17 +285,33 @@ def analyse_email(
     sender: str,
     subject: str,
     full_body: str,
-    project_names: list[str],
+    projects: list[dict],         # [{"id": ..., "name": ..., "gush": ..., "helka": ..., "address": ...}]
+    contact_context: str = "",    # e.g. "שולח מזוהה: דוד לוי (עו\"ד)"
 ) -> EmailAnalysisResult:
     """
     Step 2 — Claude Sonnet: ניתוח מעמיק של המייל + התאמה לפרויקטים.
     """
-    import json
     client = _get_client()
-    projects_str = ", ".join(project_names) if project_names else "אין פרויקטים"
+
+    # בניית תיאור פרויקטים עשיר
+    if projects:
+        proj_lines = []
+        for p in projects:
+            parts = [p["name"]]
+            if p.get("gush") and p.get("helka"):
+                parts.append(f"גוש {p['gush']} חלקה {p['helka']}")
+            if p.get("address"):
+                parts.append(p["address"])
+            proj_lines.append("• " + " | ".join(parts))
+        projects_str = "\n".join(proj_lines)
+    else:
+        projects_str = "אין פרויקטים"
+
+    contact_line = f"\n{contact_context}" if contact_context else ""
     user_content = (
-        f"שולח: {sender}\nנושא: {subject}\n"
-        f"פרויקטים קיימים במערכת: {projects_str}\n\n"
+        f"שולח: {sender}{contact_line}\n"
+        f"נושא: {subject}\n\n"
+        f"פרויקטים קיימים במערכת:\n{projects_str}\n\n"
         f"תוכן המייל:\n{full_body}"
     )
     message = client.messages.create(
@@ -290,5 +320,5 @@ def analyse_email(
         system=_EMAIL_ANALYSIS_SYSTEM,
         messages=[{"role": "user", "content": user_content}],
     )
-    data = json.loads(message.content[0].text.strip())
+    data = _parse_json(message.content[0].text)
     return EmailAnalysisResult(**data)

@@ -283,6 +283,7 @@ class EmailApproveRequest(BaseModel):
     task_title: constr(min_length=1)
     priority: constr(min_length=1)
     assignee_id: Optional[UUID] = None
+    due_date: Optional[str] = None  # YYYY-MM-DD
 
 
 # ---------------------------------------------------------------------------

@@ -18,18 +18,21 @@ def _send(to: str | list[str], subject: str, html: str) -> bool:
     if not RESEND_API_KEY:
         logger.warning("RESEND_API_KEY לא מוגדר — מייל לא נשלח")
         return False
+    to_list = [to] if isinstance(to, str) else to
+    logger.info(f"שולח מייל ל-{to_list} | subject: {subject} | from: {RESEND_FROM}")
     try:
         import resend as resend_sdk
         resend_sdk.api_key = RESEND_API_KEY
-        resend_sdk.Emails.send({
+        result = resend_sdk.Emails.send({
             "from": RESEND_FROM,
-            "to": [to] if isinstance(to, str) else to,
+            "to": to_list,
             "subject": subject,
             "html": html,
         })
+        logger.info(f"Resend response: {result}")
         return True
     except Exception as e:
-        logger.error(f"שגיאה בשליחת מייל: {e}")
+        logger.error(f"שגיאה בשליחת מייל ל-{to_list}: {e}", exc_info=True)
         return False
 
 
@@ -73,13 +76,20 @@ def notify_user_rejected(user_email: str, user_name: str):
 
 def notify_user_invited(user_email: str, user_name: str, invited_by: str = ""):
     """שולח למשתמש שהוזמן ישירות על ידי מנהל."""
+    app_url = os.getenv("APP_URL", "https://maslul-v3.vercel.app")
     inviter_txt = f" על ידי {invited_by}" if invited_by else ""
     html = f"""
-    <div dir="rtl" style="font-family: Arial, sans-serif;">
+    <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 480px;">
       <h2 style="color:#011e41;">הוזמנת למסלול — Hadas Capital</h2>
       <p>שלום {user_name},</p>
       <p>הוזמנת{inviter_txt} למערכת <strong>מסלול</strong> לניהול פרויקטים.</p>
       <p>על מנת להתחבר, השתמש בכניסה עם Google בחשבון: <strong>{user_email}</strong></p>
+      <p style="margin-top:24px;">
+        <a href="{app_url}/login"
+           style="background:#011e41;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;">
+          כניסה למערכת
+        </a>
+      </p>
     </div>
     """
     _send(user_email, "הוזמנת למסלול — Hadas Capital", html)

@@ -296,6 +296,13 @@ export default function ProjectPage() {
     await loadBudget();
   }
 
+  async function deleteQuote(quoteId: string) {
+    if (!confirm("למחוק את ההצעה?")) return;
+    await apiFetch(`/tenants/${TENANT_ID}/quotes/${quoteId}`, { method: "DELETE" });
+    setProjectQuotes(prev => prev.filter(q => q.id !== quoteId));
+    await loadBudget();
+  }
+
   async function submitAddMilestone(quoteId: string) {
     if (!newMilestone.description || !newMilestone.amount) return;
     const body: Record<string, unknown> = { description: newMilestone.description, amount: parseFloat(newMilestone.amount) };
@@ -497,6 +504,16 @@ export default function ProjectPage() {
     loadBudget();
   }
 
+  async function toggleBudgetEntryDone(id: string, currentIsPlanned: number) {
+    if (currentIsPlanned === 0) return; // already actual, no toggle back
+    await apiFetch(`/tenants/${TENANT_ID}/projects/${projectId}/budget/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ is_planned: 0 }),
+    });
+    setBudgetEntries(prev => prev.map(e => e.id === id ? { ...e, is_planned: 0 } : e));
+    loadBudget();
+  }
+
   async function sendComment() {
     const taskId = taskPanel || selectedTaskId;
     if (!newComment.trim() || !taskId) return;
@@ -650,7 +667,7 @@ export default function ProjectPage() {
       <div className="flex gap-0 border-b border-gray-200 bg-white px-8 flex-shrink-0 items-center">
         {[
           { id: "tasks" as Tab, label: "משימות" },
-          { id: "kanban" as Tab, label: "קנבן" },
+          { id: "kanban" as Tab, label: "חתך סטטוס" },
           { id: "gantt" as Tab, label: "ציר זמן" },
           { id: "budget" as Tab, label: "תקציב" },
           { id: "docs" as Tab, label: "מסמכים" },
@@ -1537,6 +1554,7 @@ export default function ProjectPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 text-xs text-gray-500">
+                  <th className="px-3 py-2 w-8" title="סמן כבוצע" />
                   <th className="px-5 py-2 text-right font-medium">קטגוריה</th>
                   <th className="px-5 py-2 text-right font-medium">תיאור</th>
                   <th className="px-5 py-2 text-right font-medium">ספק</th>
@@ -1547,9 +1565,19 @@ export default function ProjectPage() {
               </thead>
               <tbody>
                 {budgetEntries.map(entry => (
-                  <tr key={entry.id} className="border-t border-gray-50 hover:bg-gray-50 group">
+                  <tr key={entry.id} className={`border-t border-gray-50 hover:bg-gray-50 group ${!entry.is_planned ? "opacity-60" : ""}`}>
+                    <td className="px-3 py-2 text-center">
+                      <input
+                        type="checkbox"
+                        checked={entry.is_planned === 0}
+                        onChange={() => toggleBudgetEntryDone(entry.id, entry.is_planned)}
+                        title={entry.is_planned ? "סמן כבוצע (יעבור לבפועל)" : "בוצע"}
+                        className="accent-green-600 cursor-pointer"
+                        disabled={entry.is_planned === 0}
+                      />
+                    </td>
                     <td className="px-5 py-2 text-gray-600">{entry.category}</td>
-                    <td className="px-5 py-2 font-medium text-gray-800">{entry.description}</td>
+                    <td className="px-5 py-2 font-medium text-gray-800" style={{ textDecoration: entry.is_planned === 0 ? "line-through" : "none" }}>{entry.description}</td>
                     <td className="px-5 py-2 text-gray-500">{entry.vendor || "—"}</td>
                     <td className="px-5 py-2 font-medium">{fmt(entry.amount)}</td>
                     <td className="px-5 py-2">
@@ -1568,6 +1596,76 @@ export default function ProjectPage() {
               </tbody>
             </table>
           </div>
+
+          {/* Budget Gantt — monthly planned vs actual */}
+          {budgetEntries.length > 0 && (() => {
+            // Build last 3 + next 9 months relative to today
+            const now = new Date();
+            const months: { key: string; label: string }[] = [];
+            for (let i = -3; i <= 8; i++) {
+              const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+              const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+              const label = d.toLocaleDateString("he-IL", { month: "short", year: "2-digit" });
+              months.push({ key, label });
+            }
+            // Aggregate entries by month using entry_date (or created_at fallback)
+            const planned: Record<string, number> = {};
+            const actual: Record<string, number> = {};
+            budgetEntries.forEach(e => {
+              const raw = (e as any).entry_date || (e as any).created_at;
+              if (!raw) return;
+              const d = new Date(raw);
+              const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+              if (e.is_planned) planned[key] = (planned[key] || 0) + e.amount;
+              else actual[key] = (actual[key] || 0) + e.amount;
+            });
+            const maxVal = Math.max(1, ...months.flatMap(m => [planned[m.key] || 0, actual[m.key] || 0]));
+            const hasAny = months.some(m => (planned[m.key] || 0) + (actual[m.key] || 0) > 0);
+            if (!hasAny) return null;
+            return (
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mt-6">
+                <div className="px-5 py-3 border-b border-gray-100">
+                  <span className="text-sm font-semibold text-gray-700">גאנט תקציב — מתוכנן מול בפועל</span>
+                </div>
+                <div className="px-5 py-4 overflow-x-auto">
+                  <div className="flex gap-1 items-end min-w-max">
+                    {months.map(({ key, label }) => {
+                      const p = planned[key] || 0;
+                      const a = actual[key] || 0;
+                      const pPct = Math.round((p / maxVal) * 100);
+                      const aPct = Math.round((a / maxVal) * 100);
+                      const isCurrentMonth = key === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+                      return (
+                        <div key={key} className="flex flex-col items-center gap-1" style={{ width: 52 }}>
+                          <div className="flex gap-0.5 items-end" style={{ height: 80 }}>
+                            {p > 0 && (
+                              <div
+                                title={`מתוכנן: ${fmt(p)}`}
+                                style={{ width: 18, height: `${pPct}%`, background: "#3b82f6", borderRadius: "3px 3px 0 0", minHeight: 3 }}
+                              />
+                            )}
+                            {a > 0 && (
+                              <div
+                                title={`בפועל: ${fmt(a)}`}
+                                style={{ width: 18, height: `${aPct}%`, background: "#22c55e", borderRadius: "3px 3px 0 0", minHeight: 3 }}
+                              />
+                            )}
+                          </div>
+                          <span className="text-xs text-gray-500" style={{ fontWeight: isCurrentMonth ? 700 : 400, color: isCurrentMonth ? "#011e41" : undefined }}>
+                            {label}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="flex gap-4 mt-3 text-xs text-gray-500">
+                    <span className="flex items-center gap-1"><span style={{ width: 12, height: 12, background: "#3b82f6", borderRadius: 2, display: "inline-block" }} />מתוכנן</span>
+                    <span className="flex items-center gap-1"><span style={{ width: 12, height: 12, background: "#22c55e", borderRadius: 2, display: "inline-block" }} />בפועל</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Quotes section */}
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mt-6">
@@ -1621,6 +1719,11 @@ export default function ProjectPage() {
                               style={{ background: "#27ae60" }}
                             >אשר הצעה</button>
                           )}
+                          <button
+                            onClick={e => { e.stopPropagation(); deleteQuote(q.id); }}
+                            className="text-xs px-2 py-1 rounded-lg text-red-400 hover:bg-red-50 border border-red-100"
+                            title="מחק הצעה"
+                          >מחק</button>
                         </div>
                       </div>
                       {isExpanded && (

@@ -17,6 +17,9 @@ interface PipelineItem {
   suggested_task_name?: string;
   suggested_priority?: string;
   suggested_project_id?: string;
+  project_match_confidence?: number;
+  suggested_due_date?: string;
+  budget_mentioned?: number;
   triage_confidence?: number;
   triage_reason?: string;
   analysis_notes?: string;
@@ -43,7 +46,7 @@ function PipelineContent() {
 
   // Approve modal state
   const [approveItem, setApproveItem] = useState<PipelineItem | null>(null);
-  const [approveForm, setApproveForm] = useState({ project_id: "", stage_id: "", task_title: "", priority: "medium", assignee_id: "" });
+  const [approveForm, setApproveForm] = useState({ project_id: "", stage_id: "", task_title: "", priority: "medium", assignee_id: "", due_date: "" });
 
   useEffect(() => {
     if (!localStorage.getItem("token")) { router.replace("/login"); return; }
@@ -99,12 +102,14 @@ function PipelineContent() {
   }
 
   function openApprove(item: PipelineItem) {
+    const dueDateStr = item.suggested_due_date ? item.suggested_due_date.slice(0, 10) : "";
     setApproveForm({
       project_id: item.suggested_project_id || "",
       stage_id: "",
       task_title: item.suggested_task_name || item.subject,
       priority: item.suggested_priority || "medium",
       assignee_id: "",
+      due_date: dueDateStr,
     });
     setApproveItem(item);
   }
@@ -124,6 +129,7 @@ function PipelineContent() {
           task_title: approveForm.task_title,
           priority: approveForm.priority,
           assignee_id: approveForm.assignee_id || null,
+          due_date: approveForm.due_date || null,
         }),
       });
       setApproveItem(null);
@@ -209,15 +215,49 @@ function PipelineContent() {
 
               {item.suggested_task_name && (
                 <div className="mt-3 p-3 rounded-lg text-sm" style={{ background: "#f0f4ff" }}>
-                  <span className="font-medium" style={{ color: "#011e41" }}>משימה מוצעת: </span>
-                  <span className="text-gray-600">{item.suggested_task_name}</span>
-                  {item.suggested_priority && (
-                    <span className="mr-2 text-xs text-gray-400">({item.suggested_priority})</span>
+                  <div className="flex items-center justify-between flex-wrap gap-1">
+                    <div>
+                      <span className="font-medium" style={{ color: "#011e41" }}>משימה מוצעת: </span>
+                      <span className="text-gray-600">{item.suggested_task_name}</span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {item.suggested_priority && (
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          item.suggested_priority === "urgent" ? "bg-red-100 text-red-700" :
+                          item.suggested_priority === "high" ? "bg-orange-100 text-orange-700" :
+                          item.suggested_priority === "medium" ? "bg-yellow-100 text-yellow-700" :
+                          "bg-gray-100 text-gray-600"
+                        }`}>
+                          {item.suggested_priority === "urgent" ? "דחוף" :
+                           item.suggested_priority === "high" ? "גבוהה" :
+                           item.suggested_priority === "medium" ? "בינונית" : "נמוכה"}
+                        </span>
+                      )}
+                      {item.suggested_project_id && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">
+                          {projects.find(p => p.id === item.suggested_project_id)?.name || "פרויקט"}
+                          {item.project_match_confidence ? ` ${Math.round(item.project_match_confidence * 100)}%` : ""}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {(item.suggested_due_date || item.budget_mentioned) && (
+                    <div className="flex gap-3 mt-1.5 text-xs text-gray-500">
+                      {item.suggested_due_date && (
+                        <span>יעד: {new Date(item.suggested_due_date).toLocaleDateString("he-IL")}</span>
+                      )}
+                      {item.budget_mentioned && (
+                        <span>סכום: ₪{item.budget_mentioned.toLocaleString("he-IL")}</span>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
               {item.analysis_notes && (
                 <div className="mt-2 text-xs text-gray-400 italic">{item.analysis_notes}</div>
+              )}
+              {item.triage_reason && (
+                <div className="mt-1 text-xs text-gray-400">סיבת רלוונטיות: {item.triage_reason}</div>
               )}
 
               <div className="flex gap-2 mt-4">
@@ -291,22 +331,32 @@ function PipelineContent() {
                     onChange={e => setApproveForm(p => ({ ...p, priority: e.target.value }))}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"
                   >
+                    <option value="urgent">דחוף</option>
                     <option value="high">גבוהה</option>
                     <option value="medium">בינונית</option>
                     <option value="low">נמוכה</option>
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">שייך לאיש צוות</label>
-                  <select
-                    value={approveForm.assignee_id}
-                    onChange={e => setApproveForm(p => ({ ...p, assignee_id: e.target.value }))}
+                  <label className="text-xs text-gray-500 mb-1 block">תאריך יעד</label>
+                  <input
+                    type="date"
+                    value={approveForm.due_date}
+                    onChange={e => setApproveForm(p => ({ ...p, due_date: e.target.value }))}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"
-                  >
-                    <option value="">—</option>
-                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
+                  />
                 </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">שייך לאיש צוות</label>
+                <select
+                  value={approveForm.assignee_id}
+                  onChange={e => setApproveForm(p => ({ ...p, assignee_id: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"
+                >
+                  <option value="">—</option>
+                  {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
               </div>
             </div>
             <div className="flex gap-2 mt-5 justify-end">
