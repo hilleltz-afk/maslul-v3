@@ -6,7 +6,7 @@ pydantic
 pytest
 httpx
 pytest-asyncio
-anthropic
+anthropic>=0.40.0
 python-dotenv
 python-levenshtein
 google-auth-oauthlib
