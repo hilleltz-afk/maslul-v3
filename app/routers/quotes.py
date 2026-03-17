@@ -245,9 +245,13 @@ async def upload_quote(
         )
         db.add(milestone)
 
-    db.commit()
-    db.refresh(quote)
-    return _quote_to_read(quote, db)
+    try:
+        db.commit()
+        db.refresh(quote)
+        return _quote_to_read(quote, db)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"שגיאת שמירה: {str(e)[:300]}")
 
 
 @router.put("/{quote_id}", response_model=schemas.QuoteRead)
