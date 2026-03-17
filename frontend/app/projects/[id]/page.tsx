@@ -120,6 +120,7 @@ export default function ProjectPage() {
   const taskDocFileRef = useRef<HTMLInputElement>(null);
   const [showUploadForm, setShowUploadForm] = useState(false);
   const [uploadTaskId, setUploadTaskId] = useState("");
+  const [uploadExpiryDate, setUploadExpiryDate] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
 
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -163,7 +164,7 @@ export default function ProjectPage() {
     setProjectDocs(data);
   }
 
-  async function uploadProjectDoc(file: File, association?: string) {
+  async function uploadProjectDoc(file: File, association?: string, expiryDate?: string) {
     setDocsUploading(true);
     try {
       const fd = new FormData();
@@ -174,10 +175,12 @@ export default function ProjectPage() {
       } else if (association) {
         fd.append("task_id", association);
       }
+      if (expiryDate) fd.append("expiry_date", expiryDate);
       const doc = await apiUpload(`/tenants/${TENANT_ID}/documents/upload`, fd);
       setProjectDocs(prev => [doc, ...prev]);
       setShowUploadForm(false);
       setUploadTaskId("");
+      setUploadExpiryDate("");
     } catch (e: any) {
       alert("שגיאה בהעלאה: " + e.message);
     } finally { setDocsUploading(false); }
@@ -1533,7 +1536,7 @@ export default function ProjectPage() {
             e.preventDefault();
             setIsDragOver(false);
             const f = e.dataTransfer.files[0];
-            if (f) uploadProjectDoc(f, uploadTaskId || undefined);
+            if (f) uploadProjectDoc(f, uploadTaskId || undefined, uploadExpiryDate || undefined);
           }}
         >
           {/* Drag overlay */}
@@ -1588,11 +1591,20 @@ export default function ProjectPage() {
                   })}
                 </select>
               </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500">תאריך תפוגה (אופציונלי)</label>
+                <input
+                  type="date"
+                  value={uploadExpiryDate}
+                  onChange={e => setUploadExpiryDate(e.target.value)}
+                  className="text-sm border border-gray-200 rounded px-2 py-1.5 outline-none"
+                />
+              </div>
               <button
                 disabled={docsUploading}
                 onClick={() => {
                   const f = docFileRef.current?.files?.[0];
-                  if (f) uploadProjectDoc(f, uploadTaskId || undefined);
+                  if (f) uploadProjectDoc(f, uploadTaskId || undefined, uploadExpiryDate || undefined);
                 }}
                 className="px-4 py-1.5 rounded-lg text-sm font-medium text-white"
                 style={{ background: "#27ae60", opacity: docsUploading ? 0.6 : 1 }}
