@@ -60,6 +60,11 @@ export default function ProjectPage() {
   const [editingTask, setEditingTask] = useState<string | null>(null);
   const [addingToStage, setAddingToStage] = useState<string | null>(null);
   const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newTaskForm, setNewTaskForm] = useState({
+    title: "", status: "todo", priority: "medium",
+    assignee_id: "", start_date: new Date().toISOString().slice(0, 10), end_date: "", description: "",
+  });
+  const [newTaskErrors, setNewTaskErrors] = useState<Record<string, string>>({});
   const dragCol = useRef<{ col: string; startX: number; startW: number } | null>(null);
 
   // Contacts
@@ -351,14 +356,36 @@ export default function ProjectPage() {
   }
 
   async function addTask(stageId: string) {
-    if (!newTaskTitle.trim()) return;
-    const task = await apiFetch(`/tenants/${TENANT_ID}/tasks/`, {
-      method: "POST",
-      body: JSON.stringify({ project_id: projectId, stage_id: stageId, title: newTaskTitle, priority: "medium", status: "todo", start_date: new Date().toISOString().slice(0, 10) }),
-    });
-    setTasks(prev => [...prev, task]);
-    setNewTaskTitle("");
-    setAddingToStage(null);
+    // Validate required fields
+    const errors: Record<string, string> = {};
+    if (!newTaskForm.title.trim()) errors.title = "שדה חובה";
+    if (!newTaskForm.assignee_id) errors.assignee_id = "שדה חובה";
+    if (!newTaskForm.start_date) errors.start_date = "שדה חובה";
+    if (!newTaskForm.end_date) errors.end_date = "שדה חובה";
+    if (Object.keys(errors).length > 0) { setNewTaskErrors(errors); return; }
+    setNewTaskErrors({});
+    try {
+      const task = await apiFetch(`/tenants/${TENANT_ID}/tasks/`, {
+        method: "POST",
+        body: JSON.stringify({
+          project_id: projectId,
+          stage_id: stageId,
+          title: newTaskForm.title,
+          priority: newTaskForm.priority,
+          status: newTaskForm.status,
+          assignee_id: newTaskForm.assignee_id || undefined,
+          start_date: newTaskForm.start_date,
+          end_date: newTaskForm.end_date,
+          description: newTaskForm.description || undefined,
+        }),
+      });
+      setTasks(prev => [...prev, task]);
+      setNewTaskForm({ title: "", status: "todo", priority: "medium", assignee_id: "", start_date: new Date().toISOString().slice(0, 10), end_date: "", description: "" });
+      setNewTaskTitle("");
+      setAddingToStage(null);
+    } catch (e: any) {
+      alert("שגיאה ביצירת משימה: " + e.message);
+    }
   }
 
   async function addBudgetEntry() {
@@ -786,17 +813,118 @@ export default function ProjectPage() {
                     })}
 
                     {addingToStage === stage.id ? (
-                      <div className="flex items-center px-8 py-2 gap-2">
-                        <input
-                          autoFocus
-                          value={newTaskTitle}
-                          onChange={e => setNewTaskTitle(e.target.value)}
-                          onKeyDown={e => { if (e.key === "Enter") addTask(stage.id); if (e.key === "Escape") { setAddingToStage(null); setNewTaskTitle(""); } }}
-                          placeholder="שם המשימה..."
-                          className="flex-1 text-sm outline-none border-b border-blue-400 py-0.5"
-                        />
-                        <button onClick={() => addTask(stage.id)} className="text-xs px-3 py-1 rounded text-white" style={{ background: "#011e41" }}>הוסף</button>
-                        <button onClick={() => { setAddingToStage(null); setNewTaskTitle(""); }} className="text-xs text-gray-400 hover:text-gray-600">ביטול</button>
+                      <div className="mx-4 my-3 bg-blue-50 border border-blue-200 rounded-xl p-4 shadow-sm" dir="rtl">
+                        <div className="text-xs font-semibold text-blue-700 mb-3">משימה חדשה — {stage.name}</div>
+                        <div className="grid grid-cols-1 gap-3">
+                          {/* Title — required */}
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">שם המשימה <span className="text-red-500">*</span></label>
+                            <input
+                              autoFocus
+                              value={newTaskForm.title}
+                              onChange={e => setNewTaskForm(f => ({ ...f, title: e.target.value }))}
+                              onKeyDown={e => { if (e.key === "Escape") { setAddingToStage(null); setNewTaskErrors({}); } }}
+                              placeholder="שם המשימה..."
+                              className={`w-full text-sm border rounded-lg px-3 py-2 outline-none bg-white ${newTaskErrors.title ? "border-red-400" : "border-gray-200 focus:border-blue-400"}`}
+                            />
+                            {newTaskErrors.title && <span className="text-xs text-red-500">{newTaskErrors.title}</span>}
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            {/* Assignee — required */}
+                            <div>
+                              <label className="text-xs text-gray-500 mb-1 block">אחראי <span className="text-red-500">*</span></label>
+                              <select
+                                value={newTaskForm.assignee_id}
+                                onChange={e => setNewTaskForm(f => ({ ...f, assignee_id: e.target.value }))}
+                                className={`w-full text-sm border rounded-lg px-3 py-2 outline-none bg-white ${newTaskErrors.assignee_id ? "border-red-400" : "border-gray-200 focus:border-blue-400"}`}
+                              >
+                                <option value="">בחר אחראי...</option>
+                                {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                              </select>
+                              {newTaskErrors.assignee_id && <span className="text-xs text-red-500">{newTaskErrors.assignee_id}</span>}
+                            </div>
+
+                            {/* Status */}
+                            <div>
+                              <label className="text-xs text-gray-500 mb-1 block">סטטוס <span className="text-red-500">*</span></label>
+                              <select
+                                value={newTaskForm.status}
+                                onChange={e => setNewTaskForm(f => ({ ...f, status: e.target.value }))}
+                                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none bg-white focus:border-blue-400"
+                              >
+                                {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-3">
+                            {/* Priority */}
+                            <div>
+                              <label className="text-xs text-gray-500 mb-1 block">עדיפות <span className="text-red-500">*</span></label>
+                              <select
+                                value={newTaskForm.priority}
+                                onChange={e => setNewTaskForm(f => ({ ...f, priority: e.target.value }))}
+                                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none bg-white focus:border-blue-400"
+                              >
+                                {PRIORITY_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                              </select>
+                            </div>
+
+                            {/* Start date — required */}
+                            <div>
+                              <label className="text-xs text-gray-500 mb-1 block">תאריך התחלה <span className="text-red-500">*</span></label>
+                              <input
+                                type="date"
+                                value={newTaskForm.start_date}
+                                onChange={e => setNewTaskForm(f => ({ ...f, start_date: e.target.value }))}
+                                className={`w-full text-sm border rounded-lg px-3 py-2 outline-none bg-white ${newTaskErrors.start_date ? "border-red-400" : "border-gray-200 focus:border-blue-400"}`}
+                              />
+                              {newTaskErrors.start_date && <span className="text-xs text-red-500">{newTaskErrors.start_date}</span>}
+                            </div>
+
+                            {/* End date — required */}
+                            <div>
+                              <label className="text-xs text-gray-500 mb-1 block">תאריך סיום <span className="text-red-500">*</span></label>
+                              <input
+                                type="date"
+                                value={newTaskForm.end_date}
+                                onChange={e => setNewTaskForm(f => ({ ...f, end_date: e.target.value }))}
+                                className={`w-full text-sm border rounded-lg px-3 py-2 outline-none bg-white ${newTaskErrors.end_date ? "border-red-400" : "border-gray-200 focus:border-blue-400"}`}
+                              />
+                              {newTaskErrors.end_date && <span className="text-xs text-red-500">{newTaskErrors.end_date}</span>}
+                            </div>
+                          </div>
+
+                          {/* Description */}
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">תיאור</label>
+                            <textarea
+                              value={newTaskForm.description}
+                              onChange={e => setNewTaskForm(f => ({ ...f, description: e.target.value }))}
+                              placeholder="תיאור אופציונלי..."
+                              rows={2}
+                              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none bg-white focus:border-blue-400 resize-none"
+                            />
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex gap-2 pt-1">
+                            <button
+                              onClick={() => addTask(stage.id)}
+                              className="px-4 py-2 text-sm font-medium text-white rounded-lg"
+                              style={{ background: "#011e41" }}
+                            >
+                              הוסף משימה
+                            </button>
+                            <button
+                              onClick={() => { setAddingToStage(null); setNewTaskErrors({}); setNewTaskForm({ title: "", status: "todo", priority: "medium", assignee_id: "", start_date: new Date().toISOString().slice(0, 10), end_date: "", description: "" }); }}
+                              className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700"
+                            >
+                              ביטול
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     ) : (
                       <button
