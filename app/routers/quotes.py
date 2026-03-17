@@ -183,8 +183,9 @@ async def upload_quote(
 
     try:
         extracted = _analyse_pdf_with_claude(pdf_bytes, file.filename or "quote.pdf", projects)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"שגיאה בניתוח ה-PDF: {str(e)[:200]}")
+    except Exception:
+        # AI analysis failed — create quote with minimal data so upload still succeeds
+        extracted = {"title": None, "vendor": None, "total_amount": None, "project_id": None, "milestones": [], "notes": None}
 
     # צור Quote
     now = datetime.now(timezone.utc)
