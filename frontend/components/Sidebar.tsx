@@ -26,6 +26,10 @@ interface SearchResult {
   address?: string; status?: string; project_id?: string; email?: string; profession?: string;
 }
 
+interface NotifItem {
+  id: string; type: "task" | "document"; title: string; detail: string; href: string;
+}
+
 function NavLink({ href, label, icon, pathname, badge, onClick }: {
   href: string; label: string; icon: string; pathname: string; badge?: number; onClick?: () => void;
 }) {
@@ -65,6 +69,11 @@ export default function Sidebar() {
   const [overdueTasks, setOverdueTasks] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  // Notifications
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifItems, setNotifItems] = useState<NotifItem[]>([]);
+  const notifRef = useRef<HTMLDivElement>(null);
+
   // Search
   const [searchQ, setSearchQ] = useState("");
   const [searchResults, setSearchResults] = useState<{ projects: SearchResult[]; tasks: SearchResult[]; contacts: SearchResult[]; documents: SearchResult[] } | null>(null);
@@ -89,11 +98,36 @@ export default function Sidebar() {
         }).catch(() => {});
       }
       apiFetch(`/tenants/${me.tenant_id}/documents/expiring?days=30`)
-        .then((docs: any[]) => setExpiringDocs(docs.length))
+        .then((docs: any[]) => {
+          setExpiringDocs(docs.length);
+          setNotifItems(prev => [
+            ...prev.filter(n => n.type !== "document"),
+            ...docs.map((d: any) => ({
+              id: d.id,
+              type: "document" as const,
+              title: d.name,
+              detail: `פג תוקף בעוד ${d.days_left != null ? d.days_left + " ימים" : "פחות מ-30 יום"}`,
+              href: "/documents",
+            })),
+          ]);
+        })
         .catch(() => {});
       const today = new Date().toISOString().slice(0, 10);
       apiFetch(`/tenants/${me.tenant_id}/tasks/`)
-        .then((ts: any[]) => setOverdueTasks(ts.filter((t: any) => t.end_date && t.end_date.slice(0, 10) < today && t.status !== "done").length))
+        .then((ts: any[]) => {
+          const overdue = ts.filter((t: any) => t.end_date && t.end_date.slice(0, 10) < today && t.status !== "done");
+          setOverdueTasks(overdue.length);
+          setNotifItems(prev => [
+            ...prev.filter(n => n.type !== "task"),
+            ...overdue.slice(0, 10).map((t: any) => ({
+              id: t.id,
+              type: "task" as const,
+              title: t.title,
+              detail: `באיחור מ-${new Date(t.end_date).toLocaleDateString("he-IL")}`,
+              href: t.project_id ? `/projects/${t.project_id}` : "/tasks",
+            })),
+          ]);
+        })
         .catch(() => {});
     }).catch(() => {});
   }, []);
@@ -125,6 +159,18 @@ export default function Sidebar() {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  // Close notif on outside click
+  useEffect(() => {
+    if (!notifOpen) return;
+    function handler(e: MouseEvent) {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setNotifOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [notifOpen]);
 
   function navigateTo(result: SearchResult) {
     setSearchResults(null);
@@ -173,10 +219,69 @@ export default function Sidebar() {
         `}
         style={{ background: "#011e41" }}
       >
-        {/* Logo */}
-        <div className="px-6 py-6 border-b border-white/10">
-          <div className="text-white font-bold text-lg leading-tight">Hadas Capital</div>
-          <div className="text-xs mt-0.5" style={{ color: "#fcd562" }}>מסלול</div>
+        {/* Logo + Bell */}
+        <div className="px-6 py-5 border-b border-white/10 flex items-center justify-between">
+          <div>
+            <div className="text-white font-bold text-lg leading-tight">Hadas Capital</div>
+            <div className="text-xs mt-0.5" style={{ color: "#fcd562" }}>מסלול</div>
+          </div>
+          {/* Notification bell */}
+          <div className="relative" ref={notifRef}>
+            <button
+              onClick={() => setNotifOpen(o => !o)}
+              className="relative w-8 h-8 flex items-center justify-center rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+              title="התראות"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+              </svg>
+              {notifItems.length > 0 && (
+                <span
+                  className="absolute -top-0.5 -left-0.5 w-4 h-4 rounded-full text-xs flex items-center justify-center font-bold"
+                  style={{ background: "#fcd562", color: "#011e41", fontSize: 10 }}
+                >
+                  {notifItems.length > 9 ? "9+" : notifItems.length}
+                </span>
+              )}
+            </button>
+
+            {/* Dropdown */}
+            {notifOpen && (
+              <div
+                className="absolute left-0 top-full mt-2 w-72 bg-white rounded-xl shadow-2xl border border-gray-100 z-50 overflow-hidden"
+                style={{ maxHeight: 380 }}
+              >
+                <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
+                  <span className="text-sm font-semibold" style={{ color: "#011e41" }}>התראות</span>
+                  {notifItems.length > 0 && (
+                    <span className="text-xs text-gray-400">{notifItems.length} פריטים</span>
+                  )}
+                </div>
+                {notifItems.length === 0 ? (
+                  <div className="px-4 py-6 text-sm text-gray-400 text-center">אין התראות</div>
+                ) : (
+                  <div className="overflow-y-auto" style={{ maxHeight: 320 }}>
+                    {notifItems.map(n => (
+                      <a
+                        key={n.id}
+                        href={n.href}
+                        onClick={() => setNotifOpen(false)}
+                        className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 border-b border-gray-50 last:border-0"
+                        style={{ textDecoration: "none" }}
+                      >
+                        <span className="text-base mt-0.5">{n.type === "task" ? "⚠️" : "📄"}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-gray-800 truncate">{n.title}</div>
+                          <div className="text-xs text-gray-400 mt-0.5">{n.detail}</div>
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Search */}

@@ -98,6 +98,7 @@ def _analyse_pdf_with_claude(
     message = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=2048,
+        betas=["pdfs-2024-09-25"],
         messages=[
             {
                 "role": "user",
@@ -119,9 +120,10 @@ def _analyse_pdf_with_claude(
     text = message.content[0].text.strip()
     # strip markdown code fences if present
     if text.startswith("```"):
-        text = text.split("```")[1]
-        if text.startswith("json"):
-            text = text[4:]
+        lines = text.split("\n")
+        # remove first and last fence lines
+        inner = lines[1:-1] if lines[-1].strip() == "```" else lines[1:]
+        text = "\n".join(inner)
     return json.loads(text)
 
 

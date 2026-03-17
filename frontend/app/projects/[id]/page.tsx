@@ -98,6 +98,14 @@ export default function ProjectPage() {
   // Gantt zoom
   const [ganttZoom, setGanttZoom] = useState<"day" | "week" | "month" | "year">("month");
 
+  // Kanban filter
+  const [kanbanStageFilter, setKanbanStageFilter] = useState<string>("all");
+  const [kanbanAssigneeFilter, setKanbanAssigneeFilter] = useState<string>("all");
+
+  // Bulk task selection
+  const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
+
   // Docs state
   const [projectDocs, setProjectDocs] = useState<Doc[]>([]);
   const [docsUploading, setDocsUploading] = useState(false);
@@ -509,6 +517,39 @@ export default function ProjectPage() {
       {/* Tab: Tasks */}
       {tab === "tasks" && (
         <div className="flex-1 overflow-auto px-8 py-6">
+          {/* Bulk action bar */}
+          {selectedTasks.size > 0 && (
+            <div className="sticky top-0 z-10 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 mb-4 flex items-center gap-3 flex-wrap shadow-sm">
+              <span className="text-sm font-medium text-blue-700">{selectedTasks.size} משימות נבחרו</span>
+              <div className="flex gap-2 flex-wrap">
+                {STATUS_OPTIONS.map(s => (
+                  <button
+                    key={s.value}
+                    disabled={bulkLoading}
+                    onClick={async () => {
+                      setBulkLoading(true);
+                      await Promise.all([...selectedTasks].map(id =>
+                        apiFetch(`/tenants/${TENANT_ID}/tasks/${id}`, { method: "PUT", body: JSON.stringify({ status: s.value }) })
+                      ));
+                      setTasks(prev => prev.map(t => selectedTasks.has(t.id) ? { ...t, status: s.value } : t));
+                      setSelectedTasks(new Set());
+                      setBulkLoading(false);
+                    }}
+                    className="text-xs px-2.5 py-1 rounded-lg font-medium transition-opacity"
+                    style={{ background: s.bg, color: s.text, opacity: bulkLoading ? 0.5 : 1 }}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => setSelectedTasks(new Set())}
+                className="mr-auto text-xs text-gray-400 hover:text-gray-600"
+              >
+                בטל בחירה
+              </button>
+            </div>
+          )}
           {stages.map((stage) => {
             const stageTasks = tasks.filter(t => t.stage_id === stage.id);
             const isCollapsed = collapsed[stage.id];
@@ -615,9 +656,20 @@ export default function ProjectPage() {
                       const status = getStatus(task.status);
                       const priority = getPriority(task.priority);
                       return (
-                        <div key={task.id} className="flex items-center border-b border-gray-100 hover:bg-gray-50 group text-sm">
+                        <div key={task.id} className="flex items-center border-b border-gray-100 hover:bg-gray-50 group text-sm" style={{ background: selectedTasks.has(task.id) ? "#eff6ff" : undefined }}>
                           <div style={{ width: 32, minWidth: 32 }} className="flex items-center justify-center">
-                            <div className="w-2 h-2 rounded-full" style={{ background: stage.color || "#011e41" }} />
+                            <input
+                              type="checkbox"
+                              checked={selectedTasks.has(task.id)}
+                              onChange={e => {
+                                const next = new Set(selectedTasks);
+                                if (e.target.checked) next.add(task.id);
+                                else next.delete(task.id);
+                                setSelectedTasks(next);
+                              }}
+                              className="w-3.5 h-3.5 accent-blue-600 cursor-pointer opacity-0 group-hover:opacity-100"
+                              style={{ opacity: selectedTasks.has(task.id) ? 1 : undefined }}
+                            />
                           </div>
 
                           {/* Title */}
@@ -805,11 +857,44 @@ export default function ProjectPage() {
           }
         }
 
+        const kanbanFiltered = tasks.filter(t => {
+          if (kanbanStageFilter !== "all" && t.stage_id !== kanbanStageFilter) return false;
+          if (kanbanAssigneeFilter !== "all" && t.assignee_id !== kanbanAssigneeFilter) return false;
+          return true;
+        });
+
         return (
-          <div className="flex-1 overflow-auto px-6 py-4">
-            <div className="flex gap-3 h-full min-h-0" style={{ minWidth: KANBAN_COLS.length * 220 }}>
+          <div className="flex-1 overflow-auto px-6 py-4 flex flex-col gap-3">
+            {/* Filters */}
+            <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
+              <select
+                value={kanbanStageFilter}
+                onChange={e => setKanbanStageFilter(e.target.value)}
+                className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white shadow-sm"
+              >
+                <option value="all">כל השלבים</option>
+                {stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+              <select
+                value={kanbanAssigneeFilter}
+                onChange={e => setKanbanAssigneeFilter(e.target.value)}
+                className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white shadow-sm"
+              >
+                <option value="all">כל האחראים</option>
+                {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+              {(kanbanStageFilter !== "all" || kanbanAssigneeFilter !== "all") && (
+                <button
+                  onClick={() => { setKanbanStageFilter("all"); setKanbanAssigneeFilter("all"); }}
+                  className="text-xs text-gray-400 hover:text-gray-600"
+                >
+                  נקה פילטרים
+                </button>
+              )}
+            </div>
+            <div className="flex gap-3 overflow-auto" style={{ minWidth: KANBAN_COLS.length * 220, flex: 1 }}>
               {KANBAN_COLS.map(col => {
-                const colTasks = tasks.filter(t => t.status === col.status);
+                const colTasks = kanbanFiltered.filter(t => t.status === col.status);
                 return (
                   <div
                     key={col.status}
@@ -1078,34 +1163,69 @@ export default function ProjectPage() {
             </div>
           </div>
 
-          {/* Category breakdown */}
-          {budgetSummary.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 mb-6 overflow-hidden">
-              <div className="px-5 py-3 border-b border-gray-100 text-sm font-semibold text-gray-700">פירוט לפי קטגוריה</div>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 text-xs text-gray-500">
-                    <th className="px-5 py-2 text-right font-medium">קטגוריה</th>
-                    <th className="px-5 py-2 text-right font-medium">מתוכנן</th>
-                    <th className="px-5 py-2 text-right font-medium">בפועל</th>
-                    <th className="px-5 py-2 text-right font-medium">הפרש</th>
-                  </tr>
-                </thead>
-                <tbody>
+          {/* Category breakdown — chart + table */}
+          {budgetSummary.length > 0 && (() => {
+            const maxVal = Math.max(...budgetSummary.map(r => Math.max(r.planned, r.actual)), 1);
+            return (
+              <div className="bg-white rounded-xl border border-gray-200 mb-6 overflow-hidden">
+                <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+                  <span className="text-sm font-semibold text-gray-700">פירוט לפי קטגוריה</span>
+                  <div className="flex gap-3 text-xs text-gray-400">
+                    <span className="flex items-center gap-1"><span className="w-3 h-2 rounded-sm inline-block" style={{ background: "#dbeafe" }} />מתוכנן</span>
+                    <span className="flex items-center gap-1"><span className="w-3 h-2 rounded-sm inline-block" style={{ background: "#27ae60" }} />בפועל</span>
+                  </div>
+                </div>
+
+                {/* Bar chart */}
+                <div className="px-5 py-4 space-y-3 border-b border-gray-100">
                   {budgetSummary.map(row => (
-                    <tr key={row.category} className="border-t border-gray-50 hover:bg-gray-50">
-                      <td className="px-5 py-2 font-medium text-gray-700">{row.category}</td>
-                      <td className="px-5 py-2 text-gray-500">{fmt(row.planned)}</td>
-                      <td className="px-5 py-2">{fmt(row.actual)}</td>
-                      <td className="px-5 py-2 font-medium" style={{ color: row.diff < 0 ? "#c0392b" : "#27ae60" }}>
-                        {row.diff > 0 ? "+" : ""}{fmt(row.diff)}
-                      </td>
-                    </tr>
+                    <div key={row.category}>
+                      <div className="flex items-center justify-between text-xs mb-1">
+                        <span className="font-medium text-gray-700">{row.category}</span>
+                        <span style={{ color: row.diff < 0 ? "#c0392b" : "#555" }}>
+                          {fmt(row.actual)} / {fmt(row.planned)}
+                        </span>
+                      </div>
+                      <div className="w-full h-4 bg-gray-100 rounded overflow-hidden relative">
+                        <div
+                          className="absolute h-full rounded"
+                          style={{ width: `${(row.planned / maxVal) * 100}%`, background: "#dbeafe" }}
+                        />
+                        <div
+                          className="absolute h-full rounded"
+                          style={{ width: `${(row.actual / maxVal) * 100}%`, background: row.actual > row.planned ? "#c0392b" : "#27ae60" }}
+                        />
+                      </div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                </div>
+
+                {/* Table */}
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 text-xs text-gray-500">
+                      <th className="px-5 py-2 text-right font-medium">קטגוריה</th>
+                      <th className="px-5 py-2 text-right font-medium">מתוכנן</th>
+                      <th className="px-5 py-2 text-right font-medium">בפועל</th>
+                      <th className="px-5 py-2 text-right font-medium">הפרש</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {budgetSummary.map(row => (
+                      <tr key={row.category} className="border-t border-gray-50 hover:bg-gray-50">
+                        <td className="px-5 py-2 font-medium text-gray-700">{row.category}</td>
+                        <td className="px-5 py-2 text-blue-600">{fmt(row.planned)}</td>
+                        <td className="px-5 py-2 font-medium" style={{ color: row.actual > row.planned ? "#c0392b" : "#27ae60" }}>{fmt(row.actual)}</td>
+                        <td className="px-5 py-2 text-sm" style={{ color: row.diff < 0 ? "#c0392b" : "#27ae60" }}>
+                          {row.diff > 0 ? "+" : ""}{fmt(row.diff)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
 
           {/* Entries list */}
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
