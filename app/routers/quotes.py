@@ -271,6 +271,67 @@ def update_quote(
     return _quote_to_read(quote, db)
 
 
+@router.post("/{quote_id}/approve", response_model=schemas.QuoteRead)
+def approve_quote(
+    tenant_id: UUID,
+    quote_id: UUID,
+    db: Session = Depends(get_db),
+    user_id: str | None = Depends(get_current_user_id),
+):
+    """אשר הצעה — שנה סטטוס ל-approved וצור רשומות תקציב מתוכנן."""
+    quote = _get_quote_or_404(db, tenant_id, quote_id)
+    now = datetime.now(timezone.utc)
+    quote.status = "approved"
+    quote.updated_at = now
+
+    milestones = (
+        db.query(models.PaymentMilestone)
+        .filter(
+            models.PaymentMilestone.quote_id == quote_id,
+            models.PaymentMilestone.deleted_at.is_(None),
+        )
+        .all()
+    )
+
+    if milestones and quote.project_id:
+        for ms in milestones:
+            db.add(models.BudgetEntry(
+                id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                project_id=quote.project_id,
+                category="הצעת מחיר",
+                description=ms.description,
+                vendor=quote.vendor,
+                amount=ms.amount,
+                entry_date=ms.due_date or now,
+                is_planned=1,
+                notes=f"מהצעה: {quote.title}",
+                created_at=now,
+                updated_at=now,
+                created_by=user_id,
+            ))
+    elif quote.total_amount and quote.project_id:
+        db.add(models.BudgetEntry(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            project_id=quote.project_id,
+            category="הצעת מחיר",
+            description=quote.title,
+            vendor=quote.vendor,
+            amount=quote.total_amount,
+            entry_date=now,
+            is_planned=1,
+            notes=None,
+            created_at=now,
+            updated_at=now,
+            created_by=user_id,
+        ))
+
+    db.commit()
+    db.refresh(quote)
+    return _quote_to_read(quote, db)
+
+
 @router.delete("/{quote_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_quote(
     tenant_id: UUID,
@@ -317,12 +378,63 @@ def update_milestone(
         raise HTTPException(status_code=404, detail="אבן דרך לא נמצאה")
 
     update_data = data.model_dump(exclude_none=True)
+    now = datetime.now(timezone.utc)
+    was_unpaid = ms.is_paid != 1
     # if marking as paid and no paid_at, set it now
     if update_data.get("is_paid") == 1 and not ms.paid_at:
-        update_data["paid_at"] = datetime.now(timezone.utc)
+        update_data["paid_at"] = now
     for k, v in update_data.items():
         setattr(ms, k, v)
-    ms.updated_at = datetime.now(timezone.utc)
+    ms.updated_at = now
+
+    # auto-create actual budget entry when marking as paid
+    if update_data.get("is_paid") == 1 and was_unpaid and ms.project_id:
+        quote = db.query(models.Quote).filter(models.Quote.id == ms.quote_id).first()
+        db.add(models.BudgetEntry(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            project_id=ms.project_id,
+            category="תשלום",
+            description=ms.description,
+            vendor=quote.vendor if quote else None,
+            amount=ms.amount,
+            entry_date=now,
+            is_planned=0,
+            notes=f"תשלום מהצעה: {quote.title if quote else ''}",
+            created_at=now,
+            updated_at=now,
+            created_by=user_id,
+        ))
+
+    db.commit()
+    db.refresh(ms)
+    return ms
+
+
+@router.post("/{quote_id}/milestones", response_model=schemas.PaymentMilestoneRead, status_code=status.HTTP_201_CREATED)
+def add_milestone(
+    tenant_id: UUID,
+    quote_id: UUID,
+    data: schemas.PaymentMilestoneCreate,
+    db: Session = Depends(get_db),
+    user_id: str | None = Depends(get_current_user_id),
+):
+    quote = _get_quote_or_404(db, tenant_id, quote_id)
+    now = datetime.now(timezone.utc)
+    ms = models.PaymentMilestone(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        quote_id=quote_id,
+        project_id=quote.project_id,
+        description=data.description,
+        amount=data.amount,
+        due_date=data.due_date,
+        is_paid=0,
+        created_at=now,
+        updated_at=now,
+        created_by=user_id,
+    )
+    db.add(ms)
     db.commit()
     db.refresh(ms)
     return ms

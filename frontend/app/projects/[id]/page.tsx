@@ -93,6 +93,8 @@ export default function ProjectPage() {
   const [quotesUploading, setQuotesUploading] = useState(false);
   const [expandedQuoteId, setExpandedQuoteId] = useState<string | null>(null);
   const quoteFileRef = useRef<HTMLInputElement>(null);
+  const [addingMilestoneToQuote, setAddingMilestoneToQuote] = useState<string | null>(null);
+  const [newMilestone, setNewMilestone] = useState({ description: "", amount: "", due_date: "" });
 
   // Comments state
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -268,6 +270,35 @@ export default function ProjectPage() {
         ? { ...q, milestones: q.milestones.map(m => m.id === ms.id ? { ...m, is_paid: newPaid } : m) }
         : q
     ));
+    if (newPaid === 1) await loadBudget();
+  }
+
+  async function saveMilestoneDueDate(quote: Quote, ms: Milestone, date: string) {
+    await apiFetch(`/tenants/${TENANT_ID}/quotes/${quote.id}/milestones/${ms.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ due_date: date || null }),
+    });
+    setProjectQuotes(prev => prev.map(q =>
+      q.id === quote.id
+        ? { ...q, milestones: q.milestones.map(m => m.id === ms.id ? { ...m, due_date: date } : m) }
+        : q
+    ));
+  }
+
+  async function approveQuote(quoteId: string) {
+    const updated = await apiFetch(`/tenants/${TENANT_ID}/quotes/${quoteId}/approve`, { method: "POST" });
+    setProjectQuotes(prev => prev.map(q => q.id === quoteId ? { ...q, status: "approved", milestones: updated.milestones ?? q.milestones } : q));
+    await loadBudget();
+  }
+
+  async function submitAddMilestone(quoteId: string) {
+    if (!newMilestone.description || !newMilestone.amount) return;
+    const body: Record<string, unknown> = { description: newMilestone.description, amount: parseFloat(newMilestone.amount) };
+    if (newMilestone.due_date) body.due_date = newMilestone.due_date;
+    const ms = await apiFetch(`/tenants/${TENANT_ID}/quotes/${quoteId}/milestones`, { method: "POST", body: JSON.stringify(body) });
+    setProjectQuotes(prev => prev.map(q => q.id === quoteId ? { ...q, milestones: [...q.milestones, ms] } : q));
+    setAddingMilestoneToQuote(null);
+    setNewMilestone({ description: "", amount: "", due_date: "" });
   }
 
   async function loadComments(taskId: string) {
@@ -1470,50 +1501,101 @@ export default function ProjectPage() {
                   const statusLabels: Record<string, string> = { pending_review: "ממתין לאישור", approved: "מאושר", rejected: "נדחה" };
                   return (
                     <div key={q.id}>
-                      <div
-                        className="px-5 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-50"
-                        onClick={() => setExpandedQuoteId(isExpanded ? null : q.id)}
-                      >
-                        <div>
-                          <span className="font-medium text-sm">{q.title}</span>
-                          {q.vendor && <span className="text-xs text-gray-400 mr-2">· {q.vendor}</span>}
-                          <span
-                            className="text-xs px-2 py-0.5 rounded-full mr-2"
-                            style={{ background: (statusColors[q.status] || "#888") + "20", color: statusColors[q.status] || "#888" }}
-                          >
+                      <div className="px-5 py-3 flex items-center justify-between hover:bg-gray-50">
+                        <div
+                          className="flex items-center gap-2 cursor-pointer flex-1 min-w-0"
+                          onClick={() => setExpandedQuoteId(isExpanded ? null : q.id)}
+                        >
+                          <span className="text-gray-400 text-xs">{isExpanded ? "▲" : "▼"}</span>
+                          <span className="font-medium text-sm truncate">{q.title}</span>
+                          {q.vendor && <span className="text-xs text-gray-400">· {q.vendor}</span>}
+                          <span className="text-xs px-2 py-0.5 rounded-full flex-shrink-0"
+                            style={{ background: (statusColors[q.status] || "#888") + "20", color: statusColors[q.status] || "#888" }}>
                             {statusLabels[q.status] || q.status}
                           </span>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 flex-shrink-0">
                           {q.total_amount != null && <span className="font-bold text-sm" style={{ color: "#011e41" }}>{fmt(q.total_amount)}</span>}
-                          <span className="text-gray-400 text-xs">{isExpanded ? "▲" : "▼"}</span>
+                          {q.status === "pending_review" && (
+                            <button
+                              onClick={() => approveQuote(q.id)}
+                              className="text-xs px-3 py-1 rounded-lg text-white font-medium"
+                              style={{ background: "#27ae60" }}
+                            >אשר הצעה</button>
+                          )}
                         </div>
                       </div>
-                      {isExpanded && q.milestones.length > 0 && (
-                        <div className="px-5 pb-3 space-y-1.5">
-                          {q.milestones.map(ms => (
-                            <div key={ms.id} className="flex items-center justify-between rounded-lg px-3 py-2 text-sm" style={{ background: ms.is_paid ? "#f0fdf4" : "#fafafa" }}>
-                              <div className="flex items-center gap-2">
+                      {isExpanded && (
+                        <div className="px-5 pb-4 space-y-1.5">
+                          {q.milestones.map(ms => {
+                            const isOverdue = !ms.is_paid && ms.due_date && new Date(ms.due_date) < new Date();
+                            return (
+                              <div key={ms.id} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
+                                style={{ background: ms.is_paid ? "#f0fdf4" : isOverdue ? "#fef3f2" : "#fafafa" }}>
                                 <input
                                   type="checkbox"
                                   checked={ms.is_paid === 1}
                                   onChange={() => toggleMilestonePaid(q, ms)}
-                                  className="accent-green-600"
+                                  className="accent-green-600 flex-shrink-0"
                                 />
-                                <span style={{ textDecoration: ms.is_paid ? "line-through" : "none", color: ms.is_paid ? "#aaa" : "#333" }}>
+                                <span className="flex-1 min-w-0"
+                                  style={{ textDecoration: ms.is_paid ? "line-through" : "none", color: ms.is_paid ? "#aaa" : isOverdue ? "#c0392b" : "#333" }}>
                                   {ms.description}
                                 </span>
+                                <span className="font-medium text-xs flex-shrink-0"
+                                  style={{ color: ms.is_paid ? "#aaa" : "#011e41" }}>{fmt(ms.amount)}</span>
+                                <input
+                                  type="date"
+                                  value={ms.due_date ? ms.due_date.slice(0, 10) : ""}
+                                  onChange={e => saveMilestoneDueDate(q, ms, e.target.value)}
+                                  className="text-xs border border-gray-200 rounded px-1 py-0.5 outline-none w-32 flex-shrink-0"
+                                  style={{ color: isOverdue ? "#c0392b" : "#888" }}
+                                  title="תאריך צפוי לתשלום"
+                                />
+                                {ms.is_paid === 1 && ms.due_date && (
+                                  <span className="text-xs text-green-600 flex-shrink-0">✓ שולם</span>
+                                )}
                               </div>
-                              <div className="text-left">
-                                <div className="font-medium text-xs" style={{ color: ms.is_paid ? "#aaa" : "#011e41" }}>{fmt(ms.amount)}</div>
-                                {ms.due_date && <div className="text-xs text-gray-400">{new Date(ms.due_date).toLocaleDateString("he-IL")}</div>}
-                              </div>
+                            );
+                          })}
+                          {q.milestones.length > 0 && (
+                            <div className="flex gap-4 text-xs pt-1 px-1">
+                              <span className="text-green-600">שולם: {fmt(paid)}</span>
+                              <span className="text-orange-500">נותר: {fmt(unpaid)}</span>
                             </div>
-                          ))}
-                          <div className="flex gap-4 text-xs pt-1">
-                            <span className="text-green-600">שולם: {fmt(paid)}</span>
-                            <span className="text-orange-500">נותר: {fmt(unpaid)}</span>
-                          </div>
+                          )}
+                          {addingMilestoneToQuote === q.id ? (
+                            <div className="flex gap-2 items-end pt-1 flex-wrap">
+                              <input
+                                placeholder="תיאור תשלום"
+                                value={newMilestone.description}
+                                onChange={e => setNewMilestone(p => ({ ...p, description: e.target.value }))}
+                                className="border border-gray-200 rounded px-2 py-1 text-xs outline-none flex-1 min-w-32"
+                              />
+                              <input
+                                type="number"
+                                placeholder="סכום ₪"
+                                value={newMilestone.amount}
+                                onChange={e => setNewMilestone(p => ({ ...p, amount: e.target.value }))}
+                                className="border border-gray-200 rounded px-2 py-1 text-xs outline-none w-28"
+                              />
+                              <input
+                                type="date"
+                                value={newMilestone.due_date}
+                                onChange={e => setNewMilestone(p => ({ ...p, due_date: e.target.value }))}
+                                className="border border-gray-200 rounded px-2 py-1 text-xs outline-none w-32"
+                              />
+                              <button onClick={() => submitAddMilestone(q.id)}
+                                className="text-xs px-3 py-1 rounded text-white" style={{ background: "#011e41" }}>שמור</button>
+                              <button onClick={() => setAddingMilestoneToQuote(null)}
+                                className="text-xs px-2 py-1 text-gray-400">ביטול</button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => { setAddingMilestoneToQuote(q.id); setNewMilestone({ description: "", amount: "", due_date: "" }); }}
+                              className="text-xs text-gray-400 hover:text-gray-600 pt-1 px-1"
+                            >+ הוסף אבן דרך</button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1521,6 +1603,56 @@ export default function ProjectPage() {
                 })}
               </div>
             )}
+
+            {/* Cash flow forecast */}
+            {(() => {
+              const allUpcoming = projectQuotes.flatMap(q =>
+                q.milestones.filter(m => m.due_date).map(m => ({ ...m, quoteTitle: q.title, vendor: q.vendor }))
+              ).sort((a, b) => new Date(a.due_date!).getTime() - new Date(b.due_date!).getTime());
+              if (allUpcoming.length === 0) return null;
+              // group by year-quarter
+              const groups: Record<string, typeof allUpcoming> = {};
+              allUpcoming.forEach(m => {
+                const d = new Date(m.due_date!);
+                const q = Math.ceil((d.getMonth() + 1) / 3);
+                const key = `${d.getFullYear()} Q${q}`;
+                if (!groups[key]) groups[key] = [];
+                groups[key].push(m);
+              });
+              return (
+                <div className="border-t border-gray-100 px-5 pt-4 pb-2">
+                  <div className="text-xs font-semibold text-gray-500 mb-3">תזרים תשלומים צפוי</div>
+                  <div className="space-y-3">
+                    {Object.entries(groups).map(([period, items]) => {
+                      const totalPeriod = items.reduce((s, m) => s + m.amount, 0);
+                      const paidPeriod = items.filter(m => m.is_paid).reduce((s, m) => s + m.amount, 0);
+                      const isPast = items.every(m => m.is_paid);
+                      return (
+                        <div key={period}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-medium" style={{ color: isPast ? "#aaa" : "#011e41" }}>{period}</span>
+                            <span className="text-xs" style={{ color: isPast ? "#27ae60" : "#e67e22" }}>
+                              {isPast ? `שולם: ${fmt(paidPeriod)}` : `צפוי: ${fmt(totalPeriod - paidPeriod)}`}
+                            </span>
+                          </div>
+                          <div className="space-y-0.5">
+                            {items.map(m => (
+                              <div key={m.id} className="flex items-center justify-between text-xs px-2 py-0.5 rounded"
+                                style={{ background: m.is_paid ? "#f0fdf4" : "#fafaf0", color: m.is_paid ? "#aaa" : "#555" }}>
+                                <span style={{ textDecoration: m.is_paid ? "line-through" : "none" }}>
+                                  {m.vendor || m.quoteTitle} — {m.description}
+                                </span>
+                                <span>{fmt(m.amount)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
