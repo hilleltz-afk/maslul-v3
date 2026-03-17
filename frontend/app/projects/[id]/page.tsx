@@ -7,11 +7,11 @@ import { apiFetch, apiUpload } from "@/lib/api";
 const TENANT_ID = "f7d67cb1-3414-47a4-8ddb-2845d11d32ff";
 
 const STATUS_OPTIONS = [
-  { value: "todo",        label: "לביצוע",  bg: "#e0e0e0", text: "#555" },
-  { value: "in_progress", label: "בעבודה",  bg: "#2980b9", text: "#fff" },
-  { value: "done",        label: "הושלם",   bg: "#27ae60", text: "#fff" },
-  { value: "blocked",     label: "חסום",    bg: "#c0392b", text: "#fff" },
-  { value: "review",      label: "לבדיקה",  bg: "#8e44ad", text: "#fff" },
+  { value: "in_progress", label: "בעבודה",       bg: "#2980b9", text: "#fff" },
+  { value: "done",        label: "בוצע",          bg: "#27ae60", text: "#fff" },
+  { value: "delayed",     label: "בעיכוב",        bg: "#e67e22", text: "#fff" },
+  { value: "rejected",    label: "נדחה",          bg: "#c0392b", text: "#fff" },
+  { value: "partial",     label: "בוצע חלקית",   bg: "#8e44ad", text: "#fff" },
 ];
 
 const PRIORITY_OPTIONS = [
@@ -961,11 +961,11 @@ export default function ProjectPage() {
       {/* Tab: Kanban */}
       {tab === "kanban" && (() => {
         const KANBAN_COLS = [
-          { status: "todo",        label: "לביצוע",  color: "#7f8c8d", bg: "#f8f9fa" },
-          { status: "in_progress", label: "בעבודה",  color: "#2980b9", bg: "#ebf5fb" },
-          { status: "review",      label: "לבדיקה",  color: "#8e44ad", bg: "#f5eef8" },
-          { status: "done",        label: "הושלם",   color: "#27ae60", bg: "#eafaf1" },
-          { status: "blocked",     label: "חסום",    color: "#c0392b", bg: "#fdedec" },
+          { status: "in_progress", label: "בעבודה",       color: "#2980b9", bg: "#ebf5fb" },
+          { status: "done",        label: "בוצע",          color: "#27ae60", bg: "#eafaf1" },
+          { status: "delayed",     label: "בעיכוב",        color: "#e67e22", bg: "#fef9ec" },
+          { status: "rejected",    label: "נדחה",          color: "#c0392b", bg: "#fdedec" },
+          { status: "partial",     label: "בוצע חלקית",   color: "#8e44ad", bg: "#f5eef8" },
         ];
         const PRIO_COLOR: Record<string, string> = { high: "#c0392b", medium: "#e67e22", low: "#27ae60" };
         const userMap = Object.fromEntries(users.map(u => [u.id, u.name]));

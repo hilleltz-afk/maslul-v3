@@ -7,10 +7,11 @@ import { apiFetch } from "@/lib/api";
 const TENANT_ID = "f7d67cb1-3414-47a4-8ddb-2845d11d32ff";
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  todo:        { label: "לביצוע",  color: "#7f8c8d" },
-  in_progress: { label: "בעבודה",  color: "#2980b9" },
-  done:        { label: "הושלם",   color: "#27ae60" },
-  blocked:     { label: "חסום",    color: "#c0392b" },
+  in_progress: { label: "בעבודה",        color: "#2980b9" },
+  done:        { label: "בוצע",          color: "#27ae60" },
+  delayed:     { label: "בעיכוב",        color: "#e67e22" },
+  rejected:    { label: "נדחה",          color: "#c0392b" },
+  partial:     { label: "בוצע חלקית",   color: "#8e44ad" },
 };
 
 const PRIORITY_LABELS: Record<string, { label: string; color: string }> = {
@@ -105,7 +106,7 @@ export default function TasksPage() {
           {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
         <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-1">
-          {[["all", "הכל"], ["todo", "לביצוע"], ["in_progress", "בעבודה"], ["done", "הושלם"], ["blocked", "חסום"]].map(([val, label]) => (
+          {[["all", "הכל"], ["in_progress", "בעבודה"], ["done", "בוצע"], ["delayed", "בעיכוב"], ["rejected", "נדחה"], ["partial", "בוצע חלקית"]].map(([val, label]) => (
             <button
               key={val}
               onClick={() => setStatusFilter(val)}

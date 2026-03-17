@@ -7,15 +7,15 @@ import { apiFetch } from "@/lib/api";
 const TENANT_ID = "f7d67cb1-3414-47a4-8ddb-2845d11d32ff";
 
 const STATUS_COLORS: Record<string, string> = {
-  todo:        "#7f8c8d",
   in_progress: "#2980b9",
   done:        "#27ae60",
-  blocked:     "#c0392b",
-  review:      "#8e44ad",
+  delayed:     "#e67e22",
+  rejected:    "#c0392b",
+  partial:     "#8e44ad",
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  todo: "לביצוע", in_progress: "בעבודה", done: "הושלם", blocked: "חסום", review: "לבדיקה",
+  in_progress: "בעבודה", done: "בוצע", delayed: "בעיכוב", rejected: "נדחה", partial: "בוצע חלקית",
 };
 
 // Israeli holidays 5785-5786 (2025-2026)

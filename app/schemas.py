@@ -127,7 +127,7 @@ class TaskCreate(BaseModel):
     title: constr(min_length=1)
     description: Optional[str] = None
     priority: constr(min_length=1) = "medium"
-    status: constr(min_length=1) = "todo"
+    status: constr(min_length=1) = "in_progress"
     blocked_by: Optional[UUID] = None
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
