@@ -813,8 +813,8 @@ export default function ProjectPage() {
                 </div>
 
                 {!isCollapsed && (
-                  <div className="rounded-lg overflow-hidden border border-gray-200 bg-white">
-                    <div className="flex bg-gray-50 border-b border-gray-200 text-xs text-gray-500 font-medium select-none">
+                  <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
+                    <div className="flex bg-gray-50 border-b border-gray-200 text-xs text-gray-500 font-medium select-none" style={{ minWidth: "max-content" }}>
                       <div style={{ width: 32, minWidth: 32 }} />
                       {columns.map((col) => (
                         <div key={col.key} className="relative flex items-center px-3 py-2 border-r border-gray-200" style={col.key === "notes" ? { minWidth: getW(col.key), flex: 1 } : { width: getW(col.key), minWidth: getW(col.key) }}>
@@ -832,7 +832,7 @@ export default function ProjectPage() {
                       const status = getStatus(task.status);
                       const priority = getPriority(task.priority);
                       return (
-                        <div key={task.id} className="flex items-center border-b border-gray-100 hover:bg-gray-50 group text-sm" style={{ background: selectedTasks.has(task.id) ? "#eff6ff" : undefined }}>
+                        <div key={task.id} className="flex items-center border-b border-gray-100 hover:bg-gray-50 group text-sm" style={{ background: selectedTasks.has(task.id) ? "#eff6ff" : undefined, minWidth: "max-content" }}>
                           <div style={{ width: 32, minWidth: 32 }} className="flex items-center justify-center">
                             <input
                               type="checkbox"
