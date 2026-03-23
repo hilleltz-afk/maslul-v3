@@ -20,43 +20,34 @@ interface TemplateStage { id: string; name: string; color: string; order: number
 interface Template      { id: string; name: string; description?: string; stages: TemplateStage[]; }
 
 export default function TemplatesPage() {
-  const [templates, setTemplates]       = useState<Template[]>([]);
-  const [loading, setLoading]           = useState(true);
-  const [selected, setSelected]         = useState<string | null>(null); // template id being edited
-  const [collapsed, setCollapsed]       = useState<Record<string, boolean>>({});
+  const [templates, setTemplates]   = useState<Template[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [selected, setSelected]     = useState<string | null>(null);
+  const [collapsed, setCollapsed]   = useState<Record<string, boolean>>({});
 
-  // Template create/rename
-  const [showCreate, setShowCreate]     = useState(false);
-  const [newName, setNewName]           = useState("");
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName]       = useState("");
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
-  // Stage add
-  const [addingStage, setAddingStage]   = useState(false);
-  const [newStageName, setNewStageName] = useState("");
+  const [addingStage, setAddingStage]     = useState(false);
+  const [newStageName, setNewStageName]   = useState("");
   const [newStageColor, setNewStageColor] = useState(GROUP_COLORS[0]);
-  const [newStageDays, setNewStageDays] = useState("");
+  const [newStageDays, setNewStageDays]   = useState("");
 
-  // Task add/edit
-  const [addingTask, setAddingTask]     = useState<string | null>(null); // stage id
-  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [addingTask, setAddingTask]           = useState<string | null>(null);
+  const [newTaskTitle, setNewTaskTitle]       = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState("medium");
-  const [editTask, setEditTask]         = useState<{ stageId: string; taskId: string; title: string; priority: string } | null>(null);
+  const [editTask, setEditTask] = useState<{ stageId: string; taskId: string; title: string; priority: string } | null>(null);
 
   async function load() {
     setLoading(true);
-    try {
-      const data = await apiFetch(`/tenants/${TENANT_ID}/templates/`);
-      setTemplates(data);
-    } finally {
-      setLoading(false);
-    }
+    try { setTemplates(await apiFetch(`/tenants/${TENANT_ID}/templates/`)); }
+    finally { setLoading(false); }
   }
 
   useEffect(() => { load(); }, []);
 
   const current = templates.find(t => t.id === selected) ?? null;
-
-  // ── Template actions ────────────────────────────────────────────────────────
 
   async function createTemplate() {
     if (!newName.trim()) return;
@@ -76,18 +67,13 @@ export default function TemplatesPage() {
     await load();
   }
 
-  // ── Stage actions ───────────────────────────────────────────────────────────
-
   async function addStage() {
     if (!newStageName.trim() || !selected) return;
     await apiFetch(`/tenants/${TENANT_ID}/templates/${selected}/stages`, {
       method: "POST",
       body: JSON.stringify({
-        name: newStageName.trim(),
-        handling_authority: "",
-        color: newStageColor,
-        estimated_days: newStageDays ? parseInt(newStageDays) : undefined,
-        tasks: [],
+        name: newStageName.trim(), handling_authority: "", color: newStageColor,
+        estimated_days: newStageDays ? parseInt(newStageDays) : undefined, tasks: [],
       }),
     });
     setAddingStage(false); setNewStageName(""); setNewStageDays("");
@@ -99,8 +85,6 @@ export default function TemplatesPage() {
     await apiFetch(`/tenants/${TENANT_ID}/templates/${selected}/stages/${stageId}`, { method: "DELETE" });
     await load();
   }
-
-  // ── Task actions ────────────────────────────────────────────────────────────
 
   async function addTask(stageId: string) {
     if (!newTaskTitle.trim() || !selected) return;
@@ -118,8 +102,7 @@ export default function TemplatesPage() {
       method: "PUT",
       body: JSON.stringify({ title: editTask.title.trim(), priority: editTask.priority }),
     });
-    setEditTask(null);
-    await load();
+    setEditTask(null); await load();
   }
 
   async function deleteTask(stageId: string, taskId: string) {
@@ -136,28 +119,178 @@ export default function TemplatesPage() {
   );
 
   return (
-    <div className="min-h-screen" style={{ background: "#f5f6f8", direction: "rtl" }}>
+    <div className="min-h-screen" style={{ background: "#f5f6f8" }}>
       <Sidebar />
-      <main className="md:mr-56" style={{ display: "flex", flexDirection: "row-reverse", height: "100vh", overflow: "hidden" }}>
+      {/* row: editor (flex:1) on LEFT, list (260px) on RIGHT adjacent to sidebar */}
+      <main className="md:mr-56" style={{ display: "flex", flexDirection: "row", height: "100vh", overflow: "hidden" }}>
 
-        {/* ── Right panel: template list (adjacent to sidebar) ── */}
+        {/* ── Editor (left, flex:1) ── */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "24px 28px", direction: "rtl" }}>
+          {!current ? (
+            <div style={{ textAlign: "center", paddingTop: 80, color: "#94a3b8" }}>
+              <p style={{ fontSize: 16 }}>בחר טמפלייט מהרשימה או צור חדש</p>
+            </div>
+          ) : (
+            <>
+              <div style={{ marginBottom: 20, display: "flex", alignItems: "center", gap: 12 }}>
+                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "#011e41" }}>{current.name}</h2>
+                <span style={{ fontSize: 13, color: "#94a3b8" }}>
+                  {current.stages.length} קבוצות · {current.stages.reduce((s, st) => s + st.tasks.length, 0)} משימות
+                </span>
+              </div>
+
+              {current.stages.map(stage => {
+                const isCollapsed = !!collapsed[stage.id];
+                return (
+                  <div key={stage.id} style={{ marginBottom: 8 }}>
+                    <div style={{
+                      display: "flex", alignItems: "center", gap: 8,
+                      background: "#fff", borderRadius: 8, padding: "8px 12px",
+                      border: "1px solid #e2e8f0",
+                    }}>
+                      <span onClick={() => setCollapsed(c => ({ ...c, [stage.id]: !c[stage.id] }))}
+                        style={{ cursor: "pointer", color: "#94a3b8", fontSize: 13, userSelect: "none" }}>
+                        {isCollapsed ? "▸" : "▾"}
+                      </span>
+                      <div style={{ width: 12, height: 12, borderRadius: "50%", background: stage.color, flexShrink: 0 }} />
+                      <span style={{ fontWeight: 700, color: "#1e293b", fontSize: 14, flex: 1 }}>{stage.name}</span>
+                      {stage.estimated_days && (
+                        <span style={{ fontSize: 11, background: "#f0f4ff", color: "#3b5bdb", borderRadius: 6, padding: "2px 8px" }}>
+                          ~{stage.estimated_days} יום
+                        </span>
+                      )}
+                      <span style={{ fontSize: 12, color: "#94a3b8" }}>{stage.tasks.length} משימות</span>
+                      <button onClick={() => { setAddingTask(stage.id); setCollapsed(c => ({ ...c, [stage.id]: false })); }}
+                        style={{ background: "transparent", border: "1px dashed #cbd5e1", borderRadius: 5, padding: "2px 8px", fontSize: 11, color: "#64748b", cursor: "pointer" }}>
+                        + משימה
+                      </button>
+                      <button onClick={() => deleteStage(stage.id)}
+                        style={{ background: "transparent", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 14, padding: 0 }}>✕</button>
+                    </div>
+
+                    {!isCollapsed && (
+                      <div style={{ marginRight: 24, marginTop: 2 }}>
+                        {stage.tasks.map(task => (
+                          <div key={task.id} style={{
+                            display: "flex", alignItems: "center", gap: 8,
+                            background: "#fff", borderRadius: 6, padding: "7px 12px", marginBottom: 2,
+                            border: "1px solid #f1f5f9",
+                          }}>
+                            {editTask?.taskId === task.id ? (
+                              <>
+                                <input value={editTask.title}
+                                  onChange={e => setEditTask({ ...editTask, title: e.target.value })}
+                                  autoFocus
+                                  onKeyDown={e => { if (e.key === "Enter") saveTask(); if (e.key === "Escape") setEditTask(null); }}
+                                  style={{ flex: 1, padding: "3px 8px", border: "1px solid #3b82f6", borderRadius: 5, fontSize: 13, direction: "rtl" }}
+                                />
+                                <select value={editTask.priority}
+                                  onChange={e => setEditTask({ ...editTask, priority: e.target.value })}
+                                  style={{ padding: "3px 6px", border: "1px solid #cbd5e1", borderRadius: 5, fontSize: 12 }}>
+                                  {PRIORITY_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                                </select>
+                                <button onClick={saveTask} style={{ background: "#011e41", color: "#fff", border: "none", borderRadius: 5, padding: "3px 10px", fontSize: 12, cursor: "pointer" }}>שמור</button>
+                                <button onClick={() => setEditTask(null)} style={{ background: "#f1f5f9", color: "#374151", border: "none", borderRadius: 5, padding: "3px 8px", fontSize: 12, cursor: "pointer" }}>✕</button>
+                              </>
+                            ) : (
+                              <>
+                                <span style={{ flex: 1, fontSize: 13, color: "#374151" }}>{task.title}</span>
+                                <span style={{
+                                  fontSize: 11, borderRadius: 5, padding: "2px 8px",
+                                  background: (PRIORITY_OPTIONS.find(p => p.value === task.priority)?.color ?? "#94a3b8") + "22",
+                                  color: PRIORITY_OPTIONS.find(p => p.value === task.priority)?.color ?? "#94a3b8",
+                                }}>
+                                  {PRIORITY_OPTIONS.find(p => p.value === task.priority)?.label ?? task.priority}
+                                </span>
+                                <button onClick={() => setEditTask({ stageId: stage.id, taskId: task.id, title: task.title, priority: task.priority })}
+                                  style={{ background: "transparent", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: 13, padding: 0 }}>✏</button>
+                                <button onClick={() => deleteTask(stage.id, task.id)}
+                                  style={{ background: "transparent", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 13, padding: 0 }}>✕</button>
+                              </>
+                            )}
+                          </div>
+                        ))}
+
+                        {addingTask === stage.id && (
+                          <div style={{ display: "flex", gap: 6, padding: "6px 0", alignItems: "center" }}>
+                            <input value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)}
+                              placeholder="שם המשימה" autoFocus
+                              onKeyDown={e => { if (e.key === "Enter") addTask(stage.id); if (e.key === "Escape") { setAddingTask(null); setNewTaskTitle(""); } }}
+                              style={{ flex: 1, padding: "5px 10px", border: "1px dashed #3b82f6", borderRadius: 6, fontSize: 13, direction: "rtl" }}
+                            />
+                            <select value={newTaskPriority} onChange={e => setNewTaskPriority(e.target.value)}
+                              style={{ padding: "5px 8px", border: "1px solid #cbd5e1", borderRadius: 6, fontSize: 12 }}>
+                              {PRIORITY_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                            </select>
+                            <button onClick={() => addTask(stage.id)} disabled={!newTaskTitle.trim()}
+                              style={{ background: "#011e41", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 12, cursor: "pointer", opacity: !newTaskTitle.trim() ? 0.5 : 1 }}>הוסף</button>
+                            <button onClick={() => { setAddingTask(null); setNewTaskTitle(""); }}
+                              style={{ background: "#f1f5f9", color: "#374151", border: "none", borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>ביטול</button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {addingStage ? (
+                <div style={{ background: "#fff", borderRadius: 8, border: "2px dashed #3b82f6", padding: "14px 16px", marginTop: 8 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <input value={newStageName} onChange={e => setNewStageName(e.target.value)}
+                      placeholder="שם הקבוצה *" autoFocus
+                      onKeyDown={e => { if (e.key === "Enter") addStage(); if (e.key === "Escape") { setAddingStage(false); setNewStageName(""); } }}
+                      style={{ flex: 2, minWidth: 140, padding: "6px 10px", border: "1px solid #cbd5e1", borderRadius: 6, fontSize: 13, direction: "rtl" }}
+                    />
+                    <input value={newStageDays} onChange={e => setNewStageDays(e.target.value)}
+                      placeholder="ימים (משוער)" type="number" min={1}
+                      style={{ width: 120, padding: "6px 10px", border: "1px solid #cbd5e1", borderRadius: 6, fontSize: 13 }}
+                    />
+                    <div style={{ display: "flex", gap: 4 }}>
+                      {GROUP_COLORS.map(c => (
+                        <div key={c} onClick={() => setNewStageColor(c)} style={{
+                          width: 20, height: 20, borderRadius: "50%", background: c, cursor: "pointer",
+                          outline: newStageColor === c ? "2px solid #011e41" : "none", outlineOffset: 2,
+                        }} />
+                      ))}
+                    </div>
+                    <button onClick={addStage} disabled={!newStageName.trim()}
+                      style={{ background: "#011e41", color: "#fff", border: "none", borderRadius: 6, padding: "6px 16px", fontSize: 13, cursor: "pointer", fontWeight: 600, opacity: !newStageName.trim() ? 0.5 : 1 }}>
+                      הוסף קבוצה
+                    </button>
+                    <button onClick={() => { setAddingStage(false); setNewStageName(""); setNewStageDays(""); }}
+                      style={{ background: "#f1f5f9", color: "#374151", border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 13, cursor: "pointer" }}>ביטול</button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => setAddingStage(true)} style={{
+                  marginTop: 8, background: "transparent", border: "1px dashed #cbd5e1",
+                  borderRadius: 8, padding: "8px 18px", color: "#64748b", fontSize: 13,
+                  cursor: "pointer", width: "100%",
+                }}>
+                  + הוסף קבוצת משימות
+                </button>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* ── Template list (260px, RIGHT, adjacent to sidebar) ── */}
         <div style={{
-          width: 260, flexShrink: 0, background: "#fff", borderLeft: "1px solid #e2e8f0",
-          display: "flex", flexDirection: "column", overflow: "hidden",
+          width: 260, flexShrink: 0, background: "#fff", borderRight: "1px solid #e2e8f0",
+          display: "flex", flexDirection: "column", overflow: "hidden", direction: "rtl",
         }}>
           <div style={{ padding: "16px 14px 10px", borderBottom: "1px solid #f1f5f9" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontWeight: 700, color: "#011e41", fontSize: 15 }}>טמפלייטים</span>
-              <button
-                onClick={() => setShowCreate(true)}
-                style={{ background: "#011e41", color: "#fff", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 12, cursor: "pointer" }}
-              >+ חדש</button>
+              <button onClick={() => setShowCreate(true)}
+                style={{ background: "#011e41", color: "#fff", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 12, cursor: "pointer" }}>
+                + חדש
+              </button>
             </div>
-
             {showCreate && (
               <div style={{ marginTop: 10, display: "flex", gap: 6 }}>
-                <input
-                  value={newName} onChange={e => setNewName(e.target.value)}
+                <input value={newName} onChange={e => setNewName(e.target.value)}
                   placeholder="שם הטמפלייט" autoFocus
                   onKeyDown={e => { if (e.key === "Enter") createTemplate(); if (e.key === "Escape") { setShowCreate(false); setNewName(""); } }}
                   style={{ flex: 1, padding: "5px 8px", border: "1px solid #3b82f6", borderRadius: 6, fontSize: 13, direction: "rtl" }}
@@ -175,16 +308,13 @@ export default function TemplatesPage() {
               <p style={{ padding: 16, color: "#94a3b8", fontSize: 13, textAlign: "center" }}>אין טמפלייטים עדיין</p>
             )}
             {templates.map(t => (
-              <div key={t.id}
-                onClick={() => setSelected(t.id)}
-                style={{
-                  padding: "10px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8,
-                  background: selected === t.id ? "#f0f4ff" : "transparent",
-                  borderRight: selected === t.id ? "3px solid #3b5bdb" : "3px solid transparent",
-                }}
-              >
+              <div key={t.id} onClick={() => setSelected(t.id)} style={{
+                padding: "10px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8,
+                background: selected === t.id ? "#f0f4ff" : "transparent",
+                borderRight: selected === t.id ? "3px solid #3b5bdb" : "3px solid transparent",
+              }}>
                 <span style={{ flex: 1, fontWeight: selected === t.id ? 600 : 400, color: "#1e293b", fontSize: 14 }}>{t.name}</span>
-                <span style={{ fontSize: 11, color: "#94a3b8" }}>{t.stages.length} שלבים</span>
+                <span style={{ fontSize: 11, color: "#94a3b8" }}>{t.stages.length}</span>
                 {confirmDelete === t.id ? (
                   <>
                     <button onClick={e => { e.stopPropagation(); deleteTemplate(t.id); }}
@@ -194,7 +324,7 @@ export default function TemplatesPage() {
                   </>
                 ) : (
                   <button onClick={e => { e.stopPropagation(); setConfirmDelete(t.id); }}
-                    style={{ background: "transparent", border: "none", cursor: "pointer", color: "#cbd5e1", fontSize: 14, padding: 0, lineHeight: 1 }}
+                    style={{ background: "transparent", border: "none", cursor: "pointer", color: "#cbd5e1", fontSize: 14, padding: 0 }}
                     title="מחק">🗑</button>
                 )}
               </div>
@@ -202,183 +332,6 @@ export default function TemplatesPage() {
           </div>
         </div>
 
-        {/* ── Right panel: template editor ── */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "24px 28px" }}>
-          {!current ? (
-            <div style={{ textAlign: "center", paddingTop: 80, color: "#94a3b8" }}>
-              <p style={{ fontSize: 16 }}>בחר טמפלייט מהרשימה או צור חדש</p>
-            </div>
-          ) : (
-            <>
-              {/* Template header */}
-              <div style={{ marginBottom: 20, display: "flex", alignItems: "center", gap: 12 }}>
-                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "#011e41" }}>{current.name}</h2>
-                <span style={{ fontSize: 13, color: "#94a3b8" }}>
-                  {current.stages.length} קבוצות · {current.stages.reduce((s, st) => s + st.tasks.length, 0)} משימות
-                </span>
-              </div>
-
-              {/* Stages */}
-              {current.stages.map(stage => {
-                const isCollapsed = !!collapsed[stage.id];
-                return (
-                  <div key={stage.id} style={{ marginBottom: 8 }}>
-                    {/* Stage header row */}
-                    <div style={{
-                      display: "flex", alignItems: "center", gap: 8,
-                      background: "#fff", borderRadius: 8, padding: "8px 12px",
-                      border: "1px solid #e2e8f0",
-                    }}>
-                      <span
-                        onClick={() => setCollapsed(c => ({ ...c, [stage.id]: !c[stage.id] }))}
-                        style={{ cursor: "pointer", color: "#94a3b8", fontSize: 13, userSelect: "none" }}>
-                        {isCollapsed ? "▸" : "▾"}
-                      </span>
-                      <div style={{ width: 12, height: 12, borderRadius: "50%", background: stage.color, flexShrink: 0 }} />
-                      <span style={{ fontWeight: 700, color: "#1e293b", fontSize: 14, flex: 1 }}>{stage.name}</span>
-                      {stage.estimated_days && (
-                        <span style={{ fontSize: 11, background: "#f0f4ff", color: "#3b5bdb", borderRadius: 6, padding: "2px 8px" }}>
-                          ~{stage.estimated_days} יום
-                        </span>
-                      )}
-                      <span style={{ fontSize: 12, color: "#94a3b8" }}>{stage.tasks.length} משימות</span>
-                      <button
-                        onClick={() => { setAddingTask(stage.id); setCollapsed(c => ({ ...c, [stage.id]: false })); }}
-                        style={{ background: "transparent", border: "1px dashed #cbd5e1", borderRadius: 5, padding: "2px 8px", fontSize: 11, color: "#64748b", cursor: "pointer" }}>
-                        + משימה
-                      </button>
-                      <button onClick={() => deleteStage(stage.id)}
-                        style={{ background: "transparent", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 14, padding: 0 }}
-                        title="מחק קבוצה">✕</button>
-                    </div>
-
-                    {/* Tasks */}
-                    {!isCollapsed && (
-                      <div style={{ marginRight: 24, marginTop: 2 }}>
-                        {stage.tasks.map(task => (
-                          <div key={task.id} style={{
-                            display: "flex", alignItems: "center", gap: 8,
-                            background: "#fff", borderRadius: 6, padding: "7px 12px", marginBottom: 2,
-                            border: "1px solid #f1f5f9",
-                          }}>
-                            {editTask?.taskId === task.id ? (
-                              <>
-                                <input
-                                  value={editTask.title}
-                                  onChange={e => setEditTask({ ...editTask, title: e.target.value })}
-                                  autoFocus
-                                  onKeyDown={e => { if (e.key === "Enter") saveTask(); if (e.key === "Escape") setEditTask(null); }}
-                                  style={{ flex: 1, padding: "3px 8px", border: "1px solid #3b82f6", borderRadius: 5, fontSize: 13, direction: "rtl" }}
-                                />
-                                <select
-                                  value={editTask.priority}
-                                  onChange={e => setEditTask({ ...editTask, priority: e.target.value })}
-                                  style={{ padding: "3px 6px", border: "1px solid #cbd5e1", borderRadius: 5, fontSize: 12 }}
-                                >
-                                  {PRIORITY_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-                                </select>
-                                <button onClick={saveTask} style={{ background: "#011e41", color: "#fff", border: "none", borderRadius: 5, padding: "3px 10px", fontSize: 12, cursor: "pointer" }}>שמור</button>
-                                <button onClick={() => setEditTask(null)} style={{ background: "#f1f5f9", color: "#374151", border: "none", borderRadius: 5, padding: "3px 8px", fontSize: 12, cursor: "pointer" }}>✕</button>
-                              </>
-                            ) : (
-                              <>
-                                <span style={{ flex: 1, fontSize: 13, color: "#374151" }}>{task.title}</span>
-                                <span style={{
-                                  fontSize: 11, borderRadius: 5, padding: "2px 8px",
-                                  background: PRIORITY_OPTIONS.find(p => p.value === task.priority)?.color + "22",
-                                  color: PRIORITY_OPTIONS.find(p => p.value === task.priority)?.color,
-                                }}>
-                                  {PRIORITY_OPTIONS.find(p => p.value === task.priority)?.label}
-                                </span>
-                                <button
-                                  onClick={() => setEditTask({ stageId: stage.id, taskId: task.id, title: task.title, priority: task.priority })}
-                                  style={{ background: "transparent", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: 13, padding: 0 }}>✏</button>
-                                <button onClick={() => deleteTask(stage.id, task.id)}
-                                  style={{ background: "transparent", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 13, padding: 0 }}>✕</button>
-                              </>
-                            )}
-                          </div>
-                        ))}
-
-                        {/* Add task inline */}
-                        {addingTask === stage.id && (
-                          <div style={{ display: "flex", gap: 6, padding: "6px 0", alignItems: "center" }}>
-                            <input
-                              value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)}
-                              placeholder="שם המשימה" autoFocus
-                              onKeyDown={e => { if (e.key === "Enter") addTask(stage.id); if (e.key === "Escape") { setAddingTask(null); setNewTaskTitle(""); } }}
-                              style={{ flex: 1, padding: "5px 10px", border: "1px dashed #3b82f6", borderRadius: 6, fontSize: 13, direction: "rtl" }}
-                            />
-                            <select
-                              value={newTaskPriority} onChange={e => setNewTaskPriority(e.target.value)}
-                              style={{ padding: "5px 8px", border: "1px solid #cbd5e1", borderRadius: 6, fontSize: 12 }}
-                            >
-                              {PRIORITY_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-                            </select>
-                            <button onClick={() => addTask(stage.id)} disabled={!newTaskTitle.trim()}
-                              style={{ background: "#011e41", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 12, cursor: "pointer", opacity: !newTaskTitle.trim() ? 0.5 : 1 }}>הוסף</button>
-                            <button onClick={() => { setAddingTask(null); setNewTaskTitle(""); }}
-                              style={{ background: "#f1f5f9", color: "#374151", border: "none", borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>ביטול</button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-
-              {/* Add stage */}
-              {addingStage ? (
-                <div style={{
-                  background: "#fff", borderRadius: 8, border: "2px dashed #3b82f6",
-                  padding: "14px 16px", marginTop: 8,
-                }}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    <input
-                      value={newStageName} onChange={e => setNewStageName(e.target.value)}
-                      placeholder="שם הקבוצה *" autoFocus
-                      onKeyDown={e => { if (e.key === "Enter") addStage(); if (e.key === "Escape") { setAddingStage(false); setNewStageName(""); } }}
-                      style={{ flex: 2, minWidth: 140, padding: "6px 10px", border: "1px solid #cbd5e1", borderRadius: 6, fontSize: 13, direction: "rtl" }}
-                    />
-                    <input
-                      value={newStageDays} onChange={e => setNewStageDays(e.target.value)}
-                      placeholder="ימים (משוער)" type="number" min={1}
-                      style={{ width: 120, padding: "6px 10px", border: "1px solid #cbd5e1", borderRadius: 6, fontSize: 13 }}
-                    />
-                    <div style={{ display: "flex", gap: 4 }}>
-                      {GROUP_COLORS.map(c => (
-                        <div key={c} onClick={() => setNewStageColor(c)} style={{
-                          width: 20, height: 20, borderRadius: "50%", background: c, cursor: "pointer",
-                          outline: newStageColor === c ? "2px solid #011e41" : "none",
-                          outlineOffset: 2,
-                        }} />
-                      ))}
-                    </div>
-                    <button onClick={addStage} disabled={!newStageName.trim()}
-                      style={{ background: "#011e41", color: "#fff", border: "none", borderRadius: 6, padding: "6px 16px", fontSize: 13, cursor: "pointer", fontWeight: 600, opacity: !newStageName.trim() ? 0.5 : 1 }}>
-                      הוסף קבוצה
-                    </button>
-                    <button onClick={() => { setAddingStage(false); setNewStageName(""); setNewStageDays(""); }}
-                      style={{ background: "#f1f5f9", color: "#374151", border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 13, cursor: "pointer" }}>
-                      ביטול
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setAddingStage(true)}
-                  style={{
-                    marginTop: 8, background: "transparent", border: "1px dashed #cbd5e1",
-                    borderRadius: 8, padding: "8px 18px", color: "#64748b", fontSize: 13,
-                    cursor: "pointer", width: "100%",
-                  }}
-                >
-                  + הוסף קבוצת משימות
-                </button>
-              )}
-            </>
-          )}
-        </div>
       </main>
     </div>
   );
