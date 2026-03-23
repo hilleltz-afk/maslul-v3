@@ -415,6 +415,13 @@ export default function Sidebar() {
               onClick={closeDrawer}
             />
           )}
+          <NavLink
+            href="/settings/templates"
+            label="טמפלייטים"
+            icon="📋"
+            pathname={pathname}
+            onClick={closeDrawer}
+          />
         </div>
 
         {/* Copyright */}
