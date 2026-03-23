@@ -138,9 +138,9 @@ export default function TemplatesPage() {
   return (
     <div className="min-h-screen" style={{ background: "#f5f6f8", direction: "rtl" }}>
       <Sidebar />
-      <main className="md:mr-56" style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
+      <main className="md:mr-56" style={{ display: "flex", flexDirection: "row-reverse", height: "100vh", overflow: "hidden" }}>
 
-        {/* ── Left panel: template list ── */}
+        {/* ── Right panel: template list (adjacent to sidebar) ── */}
         <div style={{
           width: 260, flexShrink: 0, background: "#fff", borderLeft: "1px solid #e2e8f0",
           display: "flex", flexDirection: "column", overflow: "hidden",
