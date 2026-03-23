@@ -290,6 +290,40 @@ DDL = [
         deleted_at TIMESTAMP,
         created_by UUID
     )""",
+    # project_templates
+    """CREATE TABLE IF NOT EXISTS project_templates (
+        id UUID PRIMARY KEY,
+        tenant_id UUID NOT NULL,
+        name VARCHAR NOT NULL,
+        description TEXT,
+        created_at TIMESTAMP,
+        updated_at TIMESTAMP,
+        deleted_at TIMESTAMP,
+        created_by UUID
+    )""",
+    """CREATE TABLE IF NOT EXISTS template_stages (
+        id UUID PRIMARY KEY,
+        template_id UUID NOT NULL REFERENCES project_templates(id),
+        name VARCHAR NOT NULL,
+        handling_authority VARCHAR NOT NULL DEFAULT '',
+        color VARCHAR DEFAULT '#011e41',
+        "order" INTEGER NOT NULL DEFAULT 0,
+        estimated_days INTEGER,
+        created_at TIMESTAMP,
+        updated_at TIMESTAMP,
+        deleted_at TIMESTAMP
+    )""",
+    """CREATE TABLE IF NOT EXISTS template_tasks (
+        id UUID PRIMARY KEY,
+        template_stage_id UUID NOT NULL REFERENCES template_stages(id),
+        title VARCHAR NOT NULL,
+        description TEXT,
+        priority VARCHAR NOT NULL DEFAULT 'medium',
+        "order" INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP,
+        updated_at TIMESTAMP,
+        deleted_at TIMESTAMP
+    )""",
 ]
 
 try:
