@@ -122,7 +122,7 @@ export default function TemplatesPage() {
     <div className="min-h-screen" style={{ background: "#f5f6f8" }}>
       <Sidebar />
       {/* row: editor (flex:1) on LEFT, list (260px) on RIGHT adjacent to sidebar */}
-      <main className="md:mr-56" style={{ display: "flex", flexDirection: "row", height: "100vh", overflow: "hidden" }}>
+      <main className="md:mr-56" style={{ display: "flex", flexDirection: "row-reverse", height: "100vh", overflow: "hidden" }}>
 
         {/* ── Editor (left, flex:1) ── */}
         <div style={{ flex: 1, overflowY: "auto", padding: "24px 28px", direction: "rtl" }}>
