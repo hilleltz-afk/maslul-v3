@@ -264,6 +264,48 @@ class ProjectMember(Base):
     created_by = Column(GUID(), ForeignKey("users.id"), nullable=True)
 
 
+class ProjectTemplate(Base):
+    """טמפלייט לפרויקט — מכיל שלבים ומשימות לשכפול."""
+    __tablename__ = "project_templates"
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(GUID(), ForeignKey("tenants.id"), nullable=False)
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True)
+    created_by = Column(GUID(), ForeignKey("users.id"), nullable=True)
+
+
+class TemplateStage(Base):
+    """שלב בתוך טמפלייט."""
+    __tablename__ = "template_stages"
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    template_id = Column(GUID(), ForeignKey("project_templates.id"), nullable=False)
+    name = Column(String, nullable=False)
+    handling_authority = Column(String, nullable=False, default="")
+    color = Column(String, nullable=True, default="#011e41")
+    order = Column(Integer, nullable=False, default=0)
+    estimated_days = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True)
+
+
+class TemplateTask(Base):
+    """משימה בתוך שלב טמפלייט."""
+    __tablename__ = "template_tasks"
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    template_stage_id = Column(GUID(), ForeignKey("template_stages.id"), nullable=False)
+    title = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    priority = Column(String, nullable=False, default="medium")
+    order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True)
+
+
 class EmailPipelineStatus(PyEnum):
     TRIAGED_OUT = "TRIAGED_OUT"   # לא רלוונטי — נסנן
     PENDING = "PENDING"            # ממתין לאישור אנושי

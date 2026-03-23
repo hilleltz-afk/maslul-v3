@@ -433,3 +433,94 @@ class TaskCommentRead(BaseModel):
     created_by: Optional[UUID] = None
 
     model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Project Template schemas
+# ---------------------------------------------------------------------------
+
+class TemplateTaskCreate(BaseModel):
+    title: constr(min_length=1)
+    description: Optional[str] = None
+    priority: str = "medium"
+    order: int = 0
+
+
+class TemplateTaskRead(BaseModel):
+    id: UUID
+    template_stage_id: UUID
+    title: str
+    description: Optional[str] = None
+    priority: str
+    order: int
+
+    model_config = {"from_attributes": True}
+
+
+class TemplateTaskUpdate(BaseModel):
+    title: Optional[constr(min_length=1)] = None
+    description: Optional[str] = None
+    priority: Optional[str] = None
+    order: Optional[int] = None
+
+
+class TemplateStageCreate(BaseModel):
+    name: constr(min_length=1)
+    handling_authority: str = ""
+    color: Optional[str] = "#011e41"
+    order: int = 0
+    estimated_days: Optional[int] = None
+    tasks: list[TemplateTaskCreate] = []
+
+
+class TemplateStageRead(BaseModel):
+    id: UUID
+    template_id: UUID
+    name: str
+    handling_authority: str
+    color: Optional[str] = "#011e41"
+    order: int
+    estimated_days: Optional[int] = None
+    tasks: list[TemplateTaskRead] = []
+
+    model_config = {"from_attributes": True}
+
+
+class TemplateStageUpdate(BaseModel):
+    name: Optional[constr(min_length=1)] = None
+    handling_authority: Optional[str] = None
+    color: Optional[str] = None
+    order: Optional[int] = None
+    estimated_days: Optional[int] = None
+
+
+class ProjectTemplateCreate(BaseModel):
+    name: constr(min_length=1)
+    description: Optional[str] = None
+    stages: list[TemplateStageCreate] = []
+
+
+class ProjectTemplateRead(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    name: str
+    description: Optional[str] = None
+    stages: list[TemplateStageRead] = []
+    created_at: datetime
+    created_by: Optional[UUID] = None
+
+    model_config = {"from_attributes": True}
+
+
+class ProjectTemplateUpdate(BaseModel):
+    name: Optional[constr(min_length=1)] = None
+    description: Optional[str] = None
+
+
+class ApplyTemplateRequest(BaseModel):
+    """בקשה להחיל טמפלייט על פרויקט — עם רשימת משימות שנבחרו."""
+    project_id: UUID
+    # מפתח: template_task_id — ערך: True אם לכלול
+    selected_task_ids: list[UUID]
+    # תאריך התחלה לחישוב due_date לפי estimated_days (אופציונלי)
+    start_date: Optional[str] = None  # YYYY-MM-DD
