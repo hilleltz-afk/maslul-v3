@@ -19,6 +19,7 @@ export async function apiFetch(path: string, options?: RequestInit) {
     }
     throw new Error(err.detail || "שגיאה");
   }
+  if (res.status === 204) return null;
   return res.json();
 }
 
