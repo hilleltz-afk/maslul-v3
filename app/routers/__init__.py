@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from . import ai, auth, budget, comments, contacts, documents, export, gmail, history, pipeline, projects, project_aliases, project_members, quotes, search, stages, tasks, templates, tenants, users
+from . import ai, auth, budget, comments, contacts, documents, export, gmail, history, pipeline, projects, project_aliases, project_members, quotes, reminders, search, stages, tasks, templates, tenants, users
 
 api_router = APIRouter()
 
@@ -21,6 +21,7 @@ api_router.include_router(project_members.router)
 api_router.include_router(quotes.router)
 api_router.include_router(search.router)
 api_router.include_router(export.router)
+api_router.include_router(reminders.router)
 api_router.include_router(gmail.router)
 api_router.include_router(history.router)
 api_router.include_router(templates.router)

@@ -47,6 +47,7 @@ export default function DashboardPage() {
   const [selectedProject, setSelectedProject] = useState<string>("all");
   const [expiringCount, setExpiringCount] = useState(0);
   const [pipelineCount, setPipelineCount] = useState(0);
+  const [sendingDigest, setSendingDigest] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -108,6 +109,22 @@ export default function DashboardPage() {
     return "₪" + Math.round(n);
   }
 
+  async function sendDigest() {
+    setSendingDigest(true);
+    try {
+      const res = await apiFetch(`/tenants/${TENANT_ID}/reminders/digest`, { method: "POST" });
+      if (res.sent) {
+        alert(`דייג'סט נשלח ל-${res.recipients?.join(", ")}\n${res.doc_count} מסמכים, ${res.task_count} משימות`);
+      } else {
+        alert(res.reason || "לא נשלח");
+      }
+    } catch (e: any) {
+      alert(e.message || "שגיאה");
+    } finally {
+      setSendingDigest(false);
+    }
+  }
+
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "בוקר טוב" : hour < 17 ? "צהריים טובים" : "ערב טוב";
 
@@ -130,16 +147,26 @@ export default function DashboardPage() {
             סקירה כללית — {new Date().toLocaleDateString("he-IL", { weekday: "long", day: "numeric", month: "long" })}
           </p>
         </div>
-        <select
-          value={selectedProject}
-          onChange={e => setSelectedProject(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white shadow-sm"
-        >
-          <option value="all">כל הפרויקטים</option>
-          {projects.map(p => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={sendDigest}
+            disabled={sendingDigest || loading}
+            className="px-3 py-2 rounded-lg text-sm border border-gray-200 bg-white text-gray-500 hover:text-blue-600 hover:border-blue-300 transition-colors disabled:opacity-50"
+            title="שלח דייג'סט מיילים — מסמכים ומשימות"
+          >
+            {sendingDigest ? "שולח..." : "📧 שלח דייג'סט"}
+          </button>
+          <select
+            value={selectedProject}
+            onChange={e => setSelectedProject(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white shadow-sm"
+          >
+            <option value="all">כל הפרויקטים</option>
+            {projects.map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {loading ? (
