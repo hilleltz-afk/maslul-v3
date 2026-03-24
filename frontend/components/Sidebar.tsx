@@ -222,9 +222,9 @@ export default function Sidebar() {
       >
         {/* Logo + Bell */}
         <div className="px-6 py-5 border-b border-white/10 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Image src="/logo.png" alt="Hadas Capital" width={36} height={36} className="rounded" />
-            <div>
+          <div className="flex flex-col items-center gap-1">
+            <Image src="/logo.png" alt="Hadas Capital" width={72} height={72} className="rounded-lg" />
+            <div className="text-center">
               <div className="text-white font-bold text-lg leading-tight">Hadas Capital</div>
               <div className="text-xs mt-0.5" style={{ color: "#fcd562" }}>מסלול</div>
             </div>
