@@ -51,6 +51,11 @@ export default function TasksPage() {
   const [projectFilter, setProjectFilter] = useState("all");
   const [search, setSearch] = useState("");
 
+  // Bulk selection
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkStatus, setBulkStatus] = useState("");
+  const [bulking, setBulking] = useState(false);
+
   // Attach doc modal
   const [attachTask, setAttachTask] = useState<Task | null>(null);
   const [attachExpiry, setAttachExpiry] = useState("");
@@ -97,6 +102,52 @@ export default function TasksPage() {
     if (!confirm(`למחוק את המשימה "${title}"?`)) return;
     await apiFetch(`/tenants/${TENANT_ID}/tasks/${id}`, { method: "DELETE" });
     setTasks(prev => prev.filter(t => t.id !== id));
+  }
+
+  function toggleSelect(id: string) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selected.size === filtered.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(filtered.map(t => t.id)));
+    }
+  }
+
+  async function bulkUpdateStatus() {
+    if (!bulkStatus || selected.size === 0) return;
+    setBulking(true);
+    try {
+      await Promise.all([...selected].map(id =>
+        apiFetch(`/tenants/${TENANT_ID}/tasks/${id}`, { method: "PUT", body: JSON.stringify({ status: bulkStatus }) })
+      ));
+      setTasks(prev => prev.map(t => selected.has(t.id) ? { ...t, status: bulkStatus } : t));
+      setSelected(new Set());
+      setBulkStatus("");
+    } finally {
+      setBulking(false);
+    }
+  }
+
+  async function bulkDelete() {
+    if (selected.size === 0) return;
+    if (!confirm(`למחוק ${selected.size} משימות?`)) return;
+    setBulking(true);
+    try {
+      await Promise.all([...selected].map(id =>
+        apiFetch(`/tenants/${TENANT_ID}/tasks/${id}`, { method: "DELETE" })
+      ));
+      setTasks(prev => prev.filter(t => !selected.has(t.id)));
+      setSelected(new Set());
+    } finally {
+      setBulking(false);
+    }
   }
 
   async function handleAttach(e: React.ChangeEvent<HTMLInputElement>) {
@@ -168,7 +219,51 @@ export default function TasksPage() {
       </div>
 
       {!loading && (
-        <p className="text-xs text-gray-400 mb-3">מציג {filtered.length} מתוך {tasks.length}</p>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={filtered.length > 0 && selected.size === filtered.length}
+              ref={el => { if (el) el.indeterminate = selected.size > 0 && selected.size < filtered.length; }}
+              onChange={toggleSelectAll}
+              className="w-4 h-4 cursor-pointer accent-blue-600"
+              title="בחר הכל"
+            />
+            <p className="text-xs text-gray-400">מציג {filtered.length} מתוך {tasks.length}</p>
+          </div>
+
+          {/* Bulk toolbar */}
+          {selected.size > 0 && (
+            <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5">
+              <span className="text-xs font-medium text-blue-700">{selected.size} נבחרו</span>
+              <select
+                value={bulkStatus}
+                onChange={e => setBulkStatus(e.target.value)}
+                className="text-xs border border-blue-200 rounded px-2 py-1 bg-white"
+              >
+                <option value="">שנה סטטוס...</option>
+                {Object.entries(STATUS_LABELS).map(([val, { label }]) => (
+                  <option key={val} value={val}>{label}</option>
+                ))}
+              </select>
+              <button
+                onClick={bulkUpdateStatus}
+                disabled={!bulkStatus || bulking}
+                className="text-xs px-3 py-1 rounded bg-blue-600 text-white disabled:opacity-50"
+              >
+                {bulking ? "..." : "עדכן"}
+              </button>
+              <button
+                onClick={bulkDelete}
+                disabled={bulking}
+                className="text-xs px-3 py-1 rounded bg-red-100 text-red-600 hover:bg-red-200 disabled:opacity-50"
+              >
+                🗑️ מחק
+              </button>
+              <button onClick={() => setSelected(new Set())} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+          )}
+        </div>
       )}
 
       {loading ? (
@@ -189,7 +284,16 @@ export default function TasksPage() {
               : null;
 
             return (
-              <div key={t.id} className="bg-white rounded-xl p-4 shadow-sm flex items-center gap-4 hover:shadow-md transition-shadow border border-transparent hover:border-gray-100 group">
+              <div key={t.id} className="bg-white rounded-xl p-4 shadow-sm flex items-center gap-4 hover:shadow-md transition-shadow border border-transparent hover:border-gray-100 group"
+                style={{ outline: selected.has(t.id) ? "2px solid #3b82f6" : "none", outlineOffset: "-1px" }}>
+                {/* Row checkbox */}
+                <input
+                  type="checkbox"
+                  checked={selected.has(t.id)}
+                  onChange={() => toggleSelect(t.id)}
+                  onClick={e => e.stopPropagation()}
+                  className="w-4 h-4 flex-shrink-0 cursor-pointer accent-blue-600"
+                />
                 {/* Priority stripe */}
                 <div className="w-1 self-stretch rounded-full flex-shrink-0" style={{ background: prio.color, minHeight: 36 }} title={`עדיפות ${prio.label}`} />
 
