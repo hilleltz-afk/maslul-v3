@@ -66,6 +66,9 @@ export default function ProjectPage() {
     assignee_id: "", start_date: new Date().toISOString().slice(0, 10), end_date: "", description: "",
   });
   const [newTaskErrors, setNewTaskErrors] = useState<Record<string, string>>({});
+  const [newTaskFile, setNewTaskFile] = useState<File | null>(null);
+  const [newTaskDocExpiry, setNewTaskDocExpiry] = useState("");
+  const newTaskFileRef = useRef<HTMLInputElement>(null);
   const dragCol = useRef<{ col: string; startX: number; startW: number } | null>(null);
 
   // Contacts
@@ -481,8 +484,23 @@ export default function ProjectPage() {
         }),
       });
       setTasks(prev => [...prev, task]);
+      // Upload attachment if selected
+      if (newTaskFile) {
+        try {
+          const fd = new FormData();
+          fd.append("file", newTaskFile);
+          fd.append("project_id", projectId);
+          fd.append("task_id", task.id);
+          if (newTaskDocExpiry) fd.append("expiry_date", newTaskDocExpiry);
+          const doc = await apiUpload(`/tenants/${TENANT_ID}/documents/upload`, fd);
+          setProjectDocs(prev => [doc, ...prev]);
+        } catch { /* non-fatal */ }
+      }
       setNewTaskForm({ title: "", status: "todo", priority: "medium", assignee_id: "", start_date: new Date().toISOString().slice(0, 10), end_date: "", description: "" });
       setNewTaskTitle("");
+      setNewTaskFile(null);
+      setNewTaskDocExpiry("");
+      if (newTaskFileRef.current) newTaskFileRef.current.value = "";
       setAddingToStage(null);
     } catch (e: any) {
       alert("שגיאה ביצירת משימה: " + e.message);
@@ -1113,6 +1131,30 @@ export default function ProjectPage() {
                             />
                           </div>
 
+                          {/* Attachment */}
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <input ref={newTaskFileRef} type="file" className="hidden" onChange={e => setNewTaskFile(e.target.files?.[0] ?? null)} />
+                            <button
+                              type="button"
+                              onClick={() => newTaskFileRef.current?.click()}
+                              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:border-blue-300 hover:text-blue-600"
+                            >
+                              📎 {newTaskFile ? newTaskFile.name : "צרף מסמך (אופציונלי)"}
+                            </button>
+                            {newTaskFile && (
+                              <>
+                                <input
+                                  type="date"
+                                  value={newTaskDocExpiry}
+                                  onChange={e => setNewTaskDocExpiry(e.target.value)}
+                                  placeholder="תאריך תוקף"
+                                  className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-blue-300"
+                                />
+                                <button type="button" onClick={() => { setNewTaskFile(null); setNewTaskDocExpiry(""); if (newTaskFileRef.current) newTaskFileRef.current.value = ""; }} className="text-xs text-gray-400 hover:text-red-500">✕</button>
+                              </>
+                            )}
+                          </div>
+
                           {/* Actions */}
                           <div className="flex gap-2 pt-1">
                             <button
@@ -1123,7 +1165,7 @@ export default function ProjectPage() {
                               הוסף משימה
                             </button>
                             <button
-                              onClick={() => { setAddingToStage(null); setNewTaskErrors({}); setNewTaskForm({ title: "", status: "todo", priority: "medium", assignee_id: "", start_date: new Date().toISOString().slice(0, 10), end_date: "", description: "" }); }}
+                              onClick={() => { setAddingToStage(null); setNewTaskErrors({}); setNewTaskForm({ title: "", status: "todo", priority: "medium", assignee_id: "", start_date: new Date().toISOString().slice(0, 10), end_date: "", description: "" }); setNewTaskFile(null); setNewTaskDocExpiry(""); if (newTaskFileRef.current) newTaskFileRef.current.value = ""; }}
                               className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700"
                             >
                               ביטול
