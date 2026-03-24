@@ -121,15 +121,13 @@ export default function TemplatesPage() {
   return (
     <div className="min-h-screen" style={{ background: "#f5f6f8" }}>
       <Sidebar />
-      {/* row: editor (flex:1) on LEFT, list (260px) on RIGHT adjacent to sidebar */}
-      {/* dir=rtl document: flex row flows RIGHT→LEFT. First child = rightmost. Template list first → RIGHT adjacent to sidebar. */}
-      <main className="md:mr-56" style={{ display: "flex", flexDirection: "row", height: "100vh", overflow: "hidden" }}>
 
-        {/* ── Template list (FIRST in DOM → rightmost in row-reverse → adjacent to sidebar) ── */}
-        <div style={{
-          width: 260, flexShrink: 0, background: "#fff", borderLeft: "1px solid #e2e8f0",
-          display: "flex", flexDirection: "column", overflow: "hidden", direction: "rtl",
-        }}>
+      {/* Template list: fixed panel, right of editor, left of sidebar */}
+      <div style={{
+        position: "fixed", top: 0, right: 224, width: 260, height: "100vh", zIndex: 30,
+        background: "#fff", borderLeft: "1px solid #e2e8f0",
+        display: "flex", flexDirection: "column", overflow: "hidden", direction: "rtl",
+      }}>
           <div style={{ padding: "16px 14px 10px", borderBottom: "1px solid #f1f5f9" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontWeight: 700, color: "#011e41", fontSize: 15 }}>טמפלייטים</span>
@@ -181,8 +179,8 @@ export default function TemplatesPage() {
           </div>
         </div>
 
-        {/* ── Editor (SECOND in DOM → leftmost in row-reverse) ── */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "24px 28px", direction: "rtl" }}>
+      {/* Editor: margin-right = sidebar(224) + list(260) = 484px */}
+      <main style={{ marginRight: 484, overflowY: "auto", minHeight: "100vh", padding: "24px 28px", direction: "rtl" }}>
           {!current ? (
             <div style={{ textAlign: "center", paddingTop: 80, color: "#94a3b8" }}>
               <p style={{ fontSize: 16 }}>בחר טמפלייט מהרשימה או צור חדש</p>
@@ -330,9 +328,9 @@ export default function TemplatesPage() {
               )}
             </>
           )}
-        </div>
 
       </main>
+
     </div>
   );
 }
