@@ -217,7 +217,7 @@ export default function TasksPage() {
                 {/* Attach doc button */}
                 <button
                   onClick={e => { e.preventDefault(); setAttachTask(t); setAttachExpiry(""); setAttachName(""); }}
-                  className="text-gray-300 hover:text-green-600 text-lg flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="text-gray-400 hover:text-green-600 text-xl flex-shrink-0"
                   title="צרף מסמך"
                 >
                   📎

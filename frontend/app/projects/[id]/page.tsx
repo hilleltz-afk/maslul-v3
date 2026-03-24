@@ -462,6 +462,7 @@ export default function ProjectPage() {
     if (!newTaskForm.assignee_id) errors.assignee_id = "שדה חובה";
     if (!newTaskForm.start_date) errors.start_date = "שדה חובה";
     if (!newTaskForm.end_date) errors.end_date = "שדה חובה";
+    else if (newTaskForm.start_date && newTaskForm.end_date <= newTaskForm.start_date) errors.end_date = "תאריך סיום חייב להיות אחרי תאריך ההתחלה";
     if (Object.keys(errors).length > 0) { setNewTaskErrors(errors); return; }
     setNewTaskErrors({});
     try {
@@ -959,7 +960,15 @@ export default function ProjectPage() {
                             <input
                               type="date"
                               value={task.end_date ? task.end_date.slice(0, 10) : ""}
-                              onChange={e => updateTask(task.id, { end_date: e.target.value || undefined })}
+                              onChange={e => {
+                                const v = e.target.value;
+                                if (v && task.start_date && v <= task.start_date.slice(0, 10)) {
+                                  alert("תאריך סיום חייב להיות אחרי תאריך ההתחלה");
+                                  e.target.value = task.end_date ? task.end_date.slice(0, 10) : "";
+                                  return;
+                                }
+                                updateTask(task.id, { end_date: v || undefined });
+                              }}
                               className="w-full text-xs bg-transparent outline-none cursor-pointer"
                             />
                           </div>
@@ -991,7 +1000,7 @@ export default function ProjectPage() {
                             </button>
                             <button
                               onClick={() => { setTaskPanel(task.id); setSelectedTaskId(task.id); }}
-                              className="text-gray-300 hover:text-green-600 text-base"
+                              className="text-gray-400 hover:text-green-600 text-xl"
                               title="צרף מסמך"
                             >
                               📎
