@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
@@ -221,9 +222,12 @@ export default function Sidebar() {
       >
         {/* Logo + Bell */}
         <div className="px-6 py-5 border-b border-white/10 flex items-center justify-between">
-          <div>
-            <div className="text-white font-bold text-lg leading-tight">Hadas Capital</div>
-            <div className="text-xs mt-0.5" style={{ color: "#fcd562" }}>מסלול</div>
+          <div className="flex items-center gap-2">
+            <Image src="/logo.png" alt="Hadas Capital" width={36} height={36} className="rounded" />
+            <div>
+              <div className="text-white font-bold text-lg leading-tight">Hadas Capital</div>
+              <div className="text-xs mt-0.5" style={{ color: "#fcd562" }}>מסלול</div>
+            </div>
           </div>
           {/* Notification bell */}
           <div className="relative" ref={notifRef}>
