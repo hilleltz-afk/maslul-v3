@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getTenantId } from "@/lib/tenant";
 import { apiFetch, apiUpload } from "@/lib/api";
 
-const TENANT_ID = "f7d67cb1-3414-47a4-8ddb-2845d11d32ff";
+const TENANT_ID = getTenantId();
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   in_progress: { label: "בעבודה",        color: "#2980b9" },

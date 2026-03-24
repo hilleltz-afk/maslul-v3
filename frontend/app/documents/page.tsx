@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getTenantId } from "@/lib/tenant";
 import { apiFetch, apiUpload } from "@/lib/api";
 
-const TENANT_ID = "f7d67cb1-3414-47a4-8ddb-2845d11d32ff";
+const TENANT_ID = getTenantId();
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 interface Document {

@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getTenantId } from "@/lib/tenant";
 import { apiFetch } from "@/lib/api";
 
-const TENANT_ID = "f7d67cb1-3414-47a4-8ddb-2845d11d32ff";
+const TENANT_ID = getTenantId();
 
 interface TemplateTask {
   id: string;

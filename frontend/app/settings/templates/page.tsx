@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getTenantId } from "@/lib/tenant";
 import { apiFetch } from "@/lib/api";
 import Sidebar from "@/components/Sidebar";
 
-const TENANT_ID = "f7d67cb1-3414-47a4-8ddb-2845d11d32ff";
+const TENANT_ID = getTenantId();
 
 const GROUP_COLORS = ["#e74c3c","#e67e22","#f1c40f","#2ecc71","#1abc9c","#3498db","#9b59b6","#011e41"];
 

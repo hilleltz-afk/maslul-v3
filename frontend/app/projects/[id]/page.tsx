@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
+import { getTenantId } from "@/lib/tenant";
 import { apiFetch, apiUpload } from "@/lib/api";
 import ApplyTemplateModal from "@/components/ApplyTemplateModal";
 
-const TENANT_ID = "f7d67cb1-3414-47a4-8ddb-2845d11d32ff";
+const TENANT_ID = getTenantId();
 
 const STATUS_OPTIONS = [
   { value: "in_progress", label: "בעבודה",       bg: "#2980b9", text: "#fff" },
