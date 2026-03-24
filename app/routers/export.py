@@ -10,7 +10,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from sqlalchemy.orm import Session
 
-from .. import models
+from .. import models, schemas
 from ..deps import get_db
 
 router = APIRouter(prefix="/tenants/{tenant_id}", tags=["export"])
@@ -31,6 +31,19 @@ def _header(ws, row, cols):
 
 def _fmt_dt(dt):
     return dt.strftime("%d/%m/%Y") if dt else ""
+
+
+@router.get("/budget/entries", response_model=list[schemas.BudgetEntryRead])
+def list_all_budget_entries(tenant_id: UUID, db: Session = Depends(get_db)):
+    """כל רשומות התקציב של הטנאנט — קריאה אחת לדשבורד."""
+    return (
+        db.query(models.BudgetEntry)
+        .filter(
+            models.BudgetEntry.tenant_id == str(tenant_id),
+            models.BudgetEntry.deleted_at.is_(None),
+        )
+        .all()
+    )
 
 
 @router.get("/projects/{project_id}/export")

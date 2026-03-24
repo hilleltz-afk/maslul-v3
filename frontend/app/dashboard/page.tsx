@@ -61,17 +61,13 @@ export default function DashboardPage() {
       apiFetch(`/tenants/${TENANT_ID}/tasks/`).catch(() => []),
       apiFetch(`/tenants/${TENANT_ID}/documents/expiring`).catch(() => []),
       apiFetch(`/tenants/${TENANT_ID}/pipeline/pending`).catch(() => []),
-    ]).then(async ([projs, tasks, expiring, pipeline]) => {
+      apiFetch(`/tenants/${TENANT_ID}/budget/entries`).catch(() => []),
+    ]).then(([projs, tasks, expiring, pipeline, entries]) => {
       setProjects(projs);
       setAllTasks(tasks);
       setExpiringCount(expiring.length);
       setPipelineCount(pipeline.length);
-      const entries = await Promise.all(
-        projs.map((p: Project) =>
-          apiFetch(`/tenants/${TENANT_ID}/projects/${p.id}/budget/`).catch(() => [])
-        )
-      );
-      setAllEntries(entries.flat());
+      setAllEntries(entries);
       setLoading(false);
     });
   }, [router]);
