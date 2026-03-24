@@ -39,11 +39,12 @@ async def upload_document(
     task_id: Optional[str] = Form(None),
     stage_id: Optional[str] = Form(None),
     expiry_date: Optional[str] = Form(None),
+    name: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     user_id: str | None = Depends(get_current_user_id),
 ):
     content = await file.read()
-    filename = file.filename or "file"
+    filename = name.strip() if name and name.strip() else (file.filename or "file")
 
     try:
         if storage.r2_configured():

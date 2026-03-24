@@ -128,6 +128,7 @@ export default function ProjectPage() {
   const [docsUploading, setDocsUploading] = useState(false);
   const [taskDocs, setTaskDocs] = useState<Doc[]>([]);
   const [taskDocsUploading, setTaskDocsUploading] = useState(false);
+  const [taskDocExpiry, setTaskDocExpiry] = useState("");
   const docFileRef = useRef<HTMLInputElement>(null);
   const taskDocFileRef = useRef<HTMLInputElement>(null);
   const [showUploadForm, setShowUploadForm] = useState(false);
@@ -136,6 +137,8 @@ export default function ProjectPage() {
   const [isDragOver, setIsDragOver] = useState(false);
 
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+  useEffect(() => { setShowApplyTemplate(false); }, [projectId]);
 
   useEffect(() => {
     if (!localStorage.getItem("token")) { router.replace("/login"); return; }
@@ -209,15 +212,18 @@ export default function ProjectPage() {
     setTaskDocs(data);
   }
 
-  async function uploadTaskDoc(file: File, taskId: string) {
+  async function uploadTaskDoc(file: File, taskId: string, expiry?: string) {
     setTaskDocsUploading(true);
     try {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("project_id", projectId);
       fd.append("task_id", taskId);
+      if (expiry) fd.append("expiry_date", expiry);
       const doc = await apiUpload(`/tenants/${TENANT_ID}/documents/upload`, fd);
       setTaskDocs(prev => [doc, ...prev]);
+      setProjectDocs(prev => [doc, ...prev]);
+      setTaskDocExpiry("");
     } finally { setTaskDocsUploading(false); }
   }
 
@@ -2276,17 +2282,27 @@ export default function ProjectPage() {
 
                 {/* Documents */}
                 <div>
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
                     <label className="text-xs text-gray-400">קבצים מצורפים</label>
-                    <label className={`text-xs px-2 py-1 rounded cursor-pointer text-white ${taskDocsUploading ? "opacity-60" : ""}`} style={{ background: "#011e41" }}>
-                      {taskDocsUploading ? "..." : "+ צרף"}
+                    <div className="flex items-center gap-1.5">
                       <input
-                        type="file"
-                        className="hidden"
-                        disabled={taskDocsUploading}
-                        onChange={e => { const f = e.target.files?.[0]; if (f) uploadTaskDoc(f, t.id); e.target.value = ""; }}
+                        type="date"
+                        value={taskDocExpiry}
+                        onChange={e => setTaskDocExpiry(e.target.value)}
+                        className="text-xs border border-gray-200 rounded px-1.5 py-1 outline-none"
+                        title="תאריך תוקף (אופציונלי)"
+                        placeholder="תוקף"
                       />
-                    </label>
+                      <label className={`text-xs px-2 py-1 rounded cursor-pointer text-white ${taskDocsUploading ? "opacity-60" : ""}`} style={{ background: "#011e41" }}>
+                        {taskDocsUploading ? "..." : "+ צרף"}
+                        <input
+                          type="file"
+                          className="hidden"
+                          disabled={taskDocsUploading}
+                          onChange={e => { const f = e.target.files?.[0]; if (f) uploadTaskDoc(f, t.id, taskDocExpiry || undefined); e.target.value = ""; }}
+                        />
+                      </label>
+                    </div>
                   </div>
                   {taskDocs.length === 0 ? (
                     <div className="text-xs text-gray-300 py-1">אין קבצים מצורפים</div>
