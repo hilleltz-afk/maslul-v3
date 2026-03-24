@@ -100,6 +100,8 @@ export default function CalendarPage() {
   const [year, setYear] = useState(() => new Date().getFullYear());
   const [month, setMonth] = useState(() => new Date().getMonth());
   const [projectFilter, setProjectFilter] = useState("all");
+  const [dragTaskId, setDragTaskId] = useState<string | null>(null);
+  const [dragOverDay, setDragOverDay] = useState<string | null>(null);
 
   useEffect(() => {
     if (!localStorage.getItem("token")) { router.replace("/login"); return; }
@@ -131,6 +133,19 @@ export default function CalendarPage() {
   function nextMonth() {
     if (month === 11) { setMonth(0); setYear(y => y + 1); }
     else setMonth(m => m + 1);
+  }
+
+  async function dropTaskOnDay(taskId: string, dayStr: string) {
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, end_date: dayStr } : t));
+    try {
+      await apiFetch(`/tenants/${TENANT_ID}/tasks/${taskId}`, {
+        method: "PUT",
+        body: JSON.stringify({ end_date: dayStr }),
+      });
+    } catch {
+      // revert on failure
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t } : t));
+    }
   }
 
   const today = new Date();
@@ -233,12 +248,23 @@ export default function CalendarPage() {
               const holiday = HOLIDAYS[dayStr];
               const hebrewDay = getHebrewDate(new Date(year, month, day));
 
+              const isDragTarget = dragOverDay === dayStr;
               return (
                 <div
                   key={day}
-                  className="min-h-28 border-r border-b border-gray-100 p-1"
+                  className="min-h-28 border-r border-b border-gray-100 p-1 transition-colors"
                   style={{
-                    background: isToday ? "#eff6ff" : holiday ? "#fffbeb" : isSaturday ? "#fafafa" : "white",
+                    background: isDragTarget ? "#dbeafe" : isToday ? "#eff6ff" : holiday ? "#fffbeb" : isSaturday ? "#fafafa" : "white",
+                    outline: isDragTarget ? "2px solid #2980b9" : "none",
+                    outlineOffset: "-2px",
+                  }}
+                  onDragOver={e => { e.preventDefault(); setDragOverDay(dayStr); }}
+                  onDragLeave={() => setDragOverDay(null)}
+                  onDrop={e => {
+                    e.preventDefault();
+                    setDragOverDay(null);
+                    if (dragTaskId) dropTaskOnDay(dragTaskId, dayStr);
+                    setDragTaskId(null);
                   }}
                 >
                   {/* Date numbers */}
@@ -268,15 +294,22 @@ export default function CalendarPage() {
                   {/* Tasks */}
                   <div className="space-y-0.5">
                     {dayTasks.slice(0, 2).map(t => (
-                      <a
+                      <div
                         key={t.id}
-                        href={t.project_id ? `/projects/${t.project_id}` : "#"}
-                        className="block text-xs px-1.5 py-0.5 rounded truncate"
-                        style={{ background: (STATUS_COLORS[t.status] || "#aaa") + "25", color: STATUS_COLORS[t.status] || "#555" }}
-                        title={t.title}
+                        draggable
+                        onDragStart={() => setDragTaskId(t.id)}
+                        onDragEnd={() => { setDragTaskId(null); setDragOverDay(null); }}
+                        className="block text-xs px-1.5 py-0.5 rounded truncate cursor-grab active:cursor-grabbing select-none"
+                        style={{
+                          background: (STATUS_COLORS[t.status] || "#aaa") + "25",
+                          color: STATUS_COLORS[t.status] || "#555",
+                          opacity: dragTaskId === t.id ? 0.4 : 1,
+                        }}
+                        title={`${t.title} — גרור לתאריך אחר`}
+                        onClick={() => t.project_id && router.push(`/projects/${t.project_id}`)}
                       >
                         {t.title}
-                      </a>
+                      </div>
                     ))}
                     {dayTasks.length > 2 && (
                       <div className="text-xs text-gray-400 px-1">+{dayTasks.length - 2} עוד</div>
