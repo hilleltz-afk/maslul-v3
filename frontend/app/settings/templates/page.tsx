@@ -122,9 +122,66 @@ export default function TemplatesPage() {
     <div className="min-h-screen" style={{ background: "#f5f6f8" }}>
       <Sidebar />
       {/* row: editor (flex:1) on LEFT, list (260px) on RIGHT adjacent to sidebar */}
+      {/* row-reverse: FIRST child in DOM = rightmost. Template list is first → RIGHT. Editor is second → LEFT. */}
       <main className="md:mr-56" style={{ display: "flex", flexDirection: "row-reverse", height: "100vh", overflow: "hidden" }}>
 
-        {/* ── Editor (left, flex:1) ── */}
+        {/* ── Template list (FIRST in DOM → rightmost in row-reverse → adjacent to sidebar) ── */}
+        <div style={{
+          width: 260, flexShrink: 0, background: "#fff", borderLeft: "1px solid #e2e8f0",
+          display: "flex", flexDirection: "column", overflow: "hidden", direction: "rtl",
+        }}>
+          <div style={{ padding: "16px 14px 10px", borderBottom: "1px solid #f1f5f9" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontWeight: 700, color: "#011e41", fontSize: 15 }}>טמפלייטים</span>
+              <button onClick={() => setShowCreate(true)}
+                style={{ background: "#011e41", color: "#fff", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 12, cursor: "pointer" }}>
+                + חדש
+              </button>
+            </div>
+            {showCreate && (
+              <div style={{ marginTop: 10, display: "flex", gap: 6 }}>
+                <input value={newName} onChange={e => setNewName(e.target.value)}
+                  placeholder="שם הטמפלייט" autoFocus
+                  onKeyDown={e => { if (e.key === "Enter") createTemplate(); if (e.key === "Escape") { setShowCreate(false); setNewName(""); } }}
+                  style={{ flex: 1, padding: "5px 8px", border: "1px solid #3b82f6", borderRadius: 6, fontSize: 13, direction: "rtl" }}
+                />
+                <button onClick={createTemplate} disabled={!newName.trim()}
+                  style={{ background: "#011e41", color: "#fff", border: "none", borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer", opacity: !newName.trim() ? 0.5 : 1 }}>
+                  צור
+                </button>
+              </div>
+            )}
+          </div>
+          <div style={{ flex: 1, overflowY: "auto" }}>
+            {templates.length === 0 && (
+              <p style={{ padding: 16, color: "#94a3b8", fontSize: 13, textAlign: "center" }}>אין טמפלייטים עדיין</p>
+            )}
+            {templates.map(t => (
+              <div key={t.id} onClick={() => setSelected(t.id)} style={{
+                padding: "10px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8,
+                background: selected === t.id ? "#f0f4ff" : "transparent",
+                borderRight: selected === t.id ? "3px solid #3b5bdb" : "3px solid transparent",
+              }}>
+                <span style={{ flex: 1, fontWeight: selected === t.id ? 600 : 400, color: "#1e293b", fontSize: 14 }}>{t.name}</span>
+                <span style={{ fontSize: 11, color: "#94a3b8" }}>{t.stages.length}</span>
+                {confirmDelete === t.id ? (
+                  <>
+                    <button onClick={e => { e.stopPropagation(); deleteTemplate(t.id); }}
+                      style={{ background: "#dc2626", color: "#fff", border: "none", borderRadius: 4, padding: "2px 7px", fontSize: 11, cursor: "pointer" }}>מחק</button>
+                    <button onClick={e => { e.stopPropagation(); setConfirmDelete(null); }}
+                      style={{ background: "#f1f5f9", color: "#374151", border: "none", borderRadius: 4, padding: "2px 6px", fontSize: 11, cursor: "pointer" }}>ביטול</button>
+                  </>
+                ) : (
+                  <button onClick={e => { e.stopPropagation(); setConfirmDelete(t.id); }}
+                    style={{ background: "transparent", border: "none", cursor: "pointer", color: "#cbd5e1", fontSize: 14, padding: 0 }}
+                    title="מחק">🗑</button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Editor (SECOND in DOM → leftmost in row-reverse) ── */}
         <div style={{ flex: 1, overflowY: "auto", padding: "24px 28px", direction: "rtl" }}>
           {!current ? (
             <div style={{ textAlign: "center", paddingTop: 80, color: "#94a3b8" }}>
@@ -273,63 +330,6 @@ export default function TemplatesPage() {
               )}
             </>
           )}
-        </div>
-
-        {/* ── Template list (260px, RIGHT, adjacent to sidebar) ── */}
-        <div style={{
-          width: 260, flexShrink: 0, background: "#fff", borderRight: "1px solid #e2e8f0",
-          display: "flex", flexDirection: "column", overflow: "hidden", direction: "rtl",
-        }}>
-          <div style={{ padding: "16px 14px 10px", borderBottom: "1px solid #f1f5f9" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontWeight: 700, color: "#011e41", fontSize: 15 }}>טמפלייטים</span>
-              <button onClick={() => setShowCreate(true)}
-                style={{ background: "#011e41", color: "#fff", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 12, cursor: "pointer" }}>
-                + חדש
-              </button>
-            </div>
-            {showCreate && (
-              <div style={{ marginTop: 10, display: "flex", gap: 6 }}>
-                <input value={newName} onChange={e => setNewName(e.target.value)}
-                  placeholder="שם הטמפלייט" autoFocus
-                  onKeyDown={e => { if (e.key === "Enter") createTemplate(); if (e.key === "Escape") { setShowCreate(false); setNewName(""); } }}
-                  style={{ flex: 1, padding: "5px 8px", border: "1px solid #3b82f6", borderRadius: 6, fontSize: 13, direction: "rtl" }}
-                />
-                <button onClick={createTemplate} disabled={!newName.trim()}
-                  style={{ background: "#011e41", color: "#fff", border: "none", borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer", opacity: !newName.trim() ? 0.5 : 1 }}>
-                  צור
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div style={{ flex: 1, overflowY: "auto" }}>
-            {templates.length === 0 && (
-              <p style={{ padding: 16, color: "#94a3b8", fontSize: 13, textAlign: "center" }}>אין טמפלייטים עדיין</p>
-            )}
-            {templates.map(t => (
-              <div key={t.id} onClick={() => setSelected(t.id)} style={{
-                padding: "10px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8,
-                background: selected === t.id ? "#f0f4ff" : "transparent",
-                borderRight: selected === t.id ? "3px solid #3b5bdb" : "3px solid transparent",
-              }}>
-                <span style={{ flex: 1, fontWeight: selected === t.id ? 600 : 400, color: "#1e293b", fontSize: 14 }}>{t.name}</span>
-                <span style={{ fontSize: 11, color: "#94a3b8" }}>{t.stages.length}</span>
-                {confirmDelete === t.id ? (
-                  <>
-                    <button onClick={e => { e.stopPropagation(); deleteTemplate(t.id); }}
-                      style={{ background: "#dc2626", color: "#fff", border: "none", borderRadius: 4, padding: "2px 7px", fontSize: 11, cursor: "pointer" }}>מחק</button>
-                    <button onClick={e => { e.stopPropagation(); setConfirmDelete(null); }}
-                      style={{ background: "#f1f5f9", color: "#374151", border: "none", borderRadius: 4, padding: "2px 6px", fontSize: 11, cursor: "pointer" }}>ביטול</button>
-                  </>
-                ) : (
-                  <button onClick={e => { e.stopPropagation(); setConfirmDelete(t.id); }}
-                    style={{ background: "transparent", border: "none", cursor: "pointer", color: "#cbd5e1", fontSize: 14, padding: 0 }}
-                    title="מחק">🗑</button>
-                )}
-              </div>
-            ))}
-          </div>
         </div>
 
       </main>
