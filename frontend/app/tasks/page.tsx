@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, apiUpload } from "@/lib/api";
 
 const TENANT_ID = "f7d67cb1-3414-47a4-8ddb-2845d11d32ff";
 
@@ -37,6 +37,8 @@ interface Stage { id: string; name: string; color?: string; project_id: string; 
 
 export default function TasksPage() {
   const router = useRouter();
+  const fileRef = useRef<HTMLInputElement>(null);
+
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -47,6 +49,12 @@ export default function TasksPage() {
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [projectFilter, setProjectFilter] = useState("all");
   const [search, setSearch] = useState("");
+
+  // Attach doc modal
+  const [attachTask, setAttachTask] = useState<Task | null>(null);
+  const [attachExpiry, setAttachExpiry] = useState("");
+  const [attachName, setAttachName] = useState("");
+  const [attaching, setAttaching] = useState(false);
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -79,6 +87,30 @@ export default function TasksPage() {
 
   const overdue = (t: Task) => t.end_date && t.end_date.slice(0, 10) < today && t.status !== "done";
 
+  async function handleAttach(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !attachTask) return;
+    setAttaching(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      if (attachTask.project_id) fd.append("project_id", attachTask.project_id);
+      fd.append("task_id", attachTask.id);
+      if (attachExpiry) fd.append("expiry_date", attachExpiry);
+      if (attachName.trim()) fd.append("name", attachName.trim());
+      await apiUpload(`/tenants/${TENANT_ID}/documents/upload`, fd);
+      setAttachTask(null);
+      setAttachExpiry("");
+      setAttachName("");
+    } catch (err: any) {
+      alert(err.message || "שגיאה בהעלאה");
+    } finally {
+      setAttaching(false);
+      if (fileRef.current) fileRef.current.value = "";
+      e.target.value = "";
+    }
+  }
+
   return (
     <div dir="rtl">
       {/* Header */}
@@ -107,31 +139,22 @@ export default function TasksPage() {
         </select>
         <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-1">
           {[["all", "הכל"], ["in_progress", "בעבודה"], ["done", "בוצע"], ["delayed", "בעיכוב"], ["rejected", "נדחה"], ["partial", "בוצע חלקית"]].map(([val, label]) => (
-            <button
-              key={val}
-              onClick={() => setStatusFilter(val)}
-              className="px-3 py-1 rounded-md text-sm transition-colors"
-              style={{ background: statusFilter === val ? "#011e41" : "transparent", color: statusFilter === val ? "#fff" : "#555" }}
-            >
+            <button key={val} onClick={() => setStatusFilter(val)} className="px-3 py-1 rounded-md text-sm transition-colors"
+              style={{ background: statusFilter === val ? "#011e41" : "transparent", color: statusFilter === val ? "#fff" : "#555" }}>
               {label}
             </button>
           ))}
         </div>
         <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-1">
           {[["all", "כל עדיפות"], ["high", "גבוהה"], ["medium", "בינונית"], ["low", "נמוכה"]].map(([val, label]) => (
-            <button
-              key={val}
-              onClick={() => setPriorityFilter(val)}
-              className="px-3 py-1 rounded-md text-sm transition-colors"
-              style={{ background: priorityFilter === val ? "#011e41" : "transparent", color: priorityFilter === val ? "#fff" : "#555" }}
-            >
+            <button key={val} onClick={() => setPriorityFilter(val)} className="px-3 py-1 rounded-md text-sm transition-colors"
+              style={{ background: priorityFilter === val ? "#011e41" : "transparent", color: priorityFilter === val ? "#fff" : "#555" }}>
               {label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Count */}
       {!loading && (
         <p className="text-xs text-gray-400 mb-3">מציג {filtered.length} מתוך {tasks.length}</p>
       )}
@@ -154,21 +177,16 @@ export default function TasksPage() {
               : null;
 
             return (
-              <a
-                key={t.id}
-                href={t.project_id ? `/projects/${t.project_id}` : "#"}
-                className="bg-white rounded-xl p-4 shadow-sm flex items-center gap-4 hover:shadow-md transition-shadow border border-transparent hover:border-gray-100 cursor-pointer"
-                style={{ textDecoration: "none" }}
-              >
+              <div key={t.id} className="bg-white rounded-xl p-4 shadow-sm flex items-center gap-4 hover:shadow-md transition-shadow border border-transparent hover:border-gray-100 group">
                 {/* Priority stripe */}
-                <div
-                  className="w-1 self-stretch rounded-full flex-shrink-0"
-                  style={{ background: prio.color, minHeight: 36 }}
-                  title={`עדיפות ${prio.label}`}
-                />
+                <div className="w-1 self-stretch rounded-full flex-shrink-0" style={{ background: prio.color, minHeight: 36 }} title={`עדיפות ${prio.label}`} />
 
-                {/* Content */}
-                <div className="flex-1 min-w-0">
+                {/* Content — click to navigate */}
+                <a
+                  href={t.project_id ? `/projects/${t.project_id}` : "#"}
+                  className="flex-1 min-w-0"
+                  style={{ textDecoration: "none" }}
+                >
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium text-sm" style={{ color: "#011e41" }}>{t.title}</span>
                     {isOverdue && (
@@ -184,27 +202,78 @@ export default function TasksPage() {
                         {stage && <span> › {stage.name}</span>}
                       </span>
                     )}
-                    {assigneeName && (
-                      <span className="text-xs text-gray-400">👤 {assigneeName}</span>
-                    )}
+                    {assigneeName && <span className="text-xs text-gray-400">👤 {assigneeName}</span>}
                     {t.end_date && !isOverdue && (
-                      <span className="text-xs text-gray-400">
-                        📅 {new Date(t.end_date).toLocaleDateString("he-IL")}
-                      </span>
+                      <span className="text-xs text-gray-400">📅 {new Date(t.end_date).toLocaleDateString("he-IL")}</span>
                     )}
                   </div>
-                </div>
+                </a>
 
                 {/* Status badge */}
-                <span
-                  className="text-xs px-3 py-1 rounded-full font-medium flex-shrink-0"
-                  style={{ background: s.color + "20", color: s.color }}
-                >
+                <span className="text-xs px-3 py-1 rounded-full font-medium flex-shrink-0" style={{ background: s.color + "20", color: s.color }}>
                   {s.label}
                 </span>
-              </a>
+
+                {/* Attach doc button */}
+                <button
+                  onClick={e => { e.preventDefault(); setAttachTask(t); setAttachExpiry(""); setAttachName(""); }}
+                  className="text-gray-300 hover:text-green-600 text-lg flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="צרף מסמך"
+                >
+                  📎
+                </button>
+              </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Attach document modal */}
+      {attachTask && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setAttachTask(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm" dir="rtl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-base" style={{ color: "#011e41" }}>צרף מסמך למשימה</h3>
+              <button onClick={() => setAttachTask(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+            </div>
+            <div className="text-sm text-gray-500 mb-4 bg-gray-50 rounded-lg px-3 py-2 truncate">{attachTask.title}</div>
+
+            <div className="flex flex-col gap-3">
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">שם המסמך (ריק = שם הקובץ)</label>
+                <input
+                  value={attachName}
+                  onChange={e => setAttachName(e.target.value)}
+                  placeholder="למשל: חוזה ספק"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-300"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">תאריך תוקף (אופציונלי)</label>
+                <input
+                  type="date"
+                  value={attachExpiry}
+                  onChange={e => setAttachExpiry(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-300"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-5">
+              <input ref={fileRef} type="file" className="hidden" onChange={handleAttach} />
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={attaching}
+                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-white"
+                style={{ background: "#011e41", opacity: attaching ? 0.6 : 1 }}
+              >
+                {attaching ? "מעלה..." : "📎 בחר קובץ"}
+              </button>
+              <button onClick={() => setAttachTask(null)} className="px-4 py-2.5 rounded-lg text-sm text-gray-500 hover:text-gray-700 border border-gray-200">
+                ביטול
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

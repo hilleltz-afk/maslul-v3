@@ -980,7 +980,7 @@ export default function ProjectPage() {
                             )}
                           </div>
 
-                          {/* Comments + Delete icons */}
+                          {/* Comments + Attach + Delete icons */}
                           <div className="px-2 py-1.5 flex items-center gap-1">
                             <button
                               onClick={() => { setSelectedTaskId(task.id); setTab("comments"); }}
@@ -988,6 +988,13 @@ export default function ProjectPage() {
                               title="תגובות"
                             >
                               💬
+                            </button>
+                            <button
+                              onClick={() => { setTaskPanel(task.id); setSelectedTaskId(task.id); }}
+                              className="text-gray-300 hover:text-green-600 text-base"
+                              title="צרף מסמך"
+                            >
+                              📎
                             </button>
                             <button
                               onClick={() => deleteTask(task.id, task.title)}
