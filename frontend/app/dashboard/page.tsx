@@ -100,10 +100,11 @@ export default function DashboardPage() {
   const catEntries = Object.entries(catMap).sort((a, b) => (b[1].planned + b[1].actual) - (a[1].planned + a[1].actual));
   const maxCatVal = Math.max(...catEntries.map(([, v]) => Math.max(v.planned, v.actual)), 1);
 
-  // Pie slices — actual expenses by category (non-zero)
+  // Pie slices — actual if available, else planned
+  const hasPieActual = catEntries.some(([, v]) => v.actual > 0);
   const pieSlices = catEntries
-    .filter(([, v]) => v.actual > 0)
-    .map(([cat, v], i) => ({ label: cat, value: v.actual, color: PIE_COLORS[i % PIE_COLORS.length] }));
+    .filter(([, v]) => (hasPieActual ? v.actual : v.planned) > 0)
+    .map(([cat, v], i) => ({ label: cat, value: hasPieActual ? v.actual : v.planned, color: PIE_COLORS[i % PIE_COLORS.length] }));
 
   function fmt(n: number) {
     if (n >= 1_000_000) return "₪" + (n / 1_000_000).toFixed(1) + "M";
@@ -165,44 +166,44 @@ export default function DashboardPage() {
               </a>
             ))}
 
-            {/* Budget summary card */}
-            {(totalPlanned > 0 || totalActual > 0) && (
-              <a
-                href="/budget"
-                className="bg-white rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow cursor-pointer border border-gray-100 col-span-2 lg:col-span-1"
-                style={{ borderRight: "4px solid #011e41" }}
-              >
-                <div className="text-xs text-gray-400 mb-2 font-medium">תקציב</div>
-                <div className="flex justify-between items-end">
-                  <div>
-                    <div className="text-xs text-gray-400">מתוכנן</div>
-                    <div className="text-lg font-bold" style={{ color: "#2980b9" }}>{fmt(totalPlanned)}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-gray-400">בפועל</div>
-                    <div className="text-lg font-bold" style={{ color: "#27ae60" }}>{fmt(totalActual)}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-gray-400">יתרה</div>
-                    <div className="text-lg font-bold" style={{ color: budgetDelta >= 0 ? "#011e41" : "#c0392b" }}>
-                      {fmt(Math.abs(budgetDelta))}
+            {/* Budget summary card — always visible */}
+            <a
+              href="/budget"
+              className="bg-white rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow cursor-pointer border-r-4 col-span-2 lg:col-span-1"
+              style={{ borderRightColor: "#011e41", borderRightWidth: 4, borderTop: "1px solid #f3f4f6", borderBottom: "1px solid #f3f4f6", borderLeft: "1px solid #f3f4f6" }}
+            >
+              <div className="text-xs text-gray-400 mb-2 font-medium uppercase tracking-wide">תקציב</div>
+              <div className="flex justify-between items-end">
+                <div>
+                  <div className="text-xs text-gray-400">מתוכנן</div>
+                  <div className="text-lg font-bold" style={{ color: "#2980b9" }}>{fmt(totalPlanned)}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-400">בפועל</div>
+                  <div className="text-lg font-bold" style={{ color: "#27ae60" }}>{fmt(totalActual)}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-400">יתרה</div>
+                  <div className="text-lg font-bold" style={{ color: budgetDelta >= 0 ? "#011e41" : "#c0392b" }}>
+                    {fmt(Math.abs(budgetDelta))}
+                    {(totalPlanned > 0 || totalActual > 0) && (
                       <span className="text-xs font-normal mr-0.5">{budgetDelta >= 0 ? "✓" : "⚠"}</span>
-                    </div>
+                    )}
                   </div>
                 </div>
-                {totalPlanned > 0 && (
-                  <div className="mt-3 w-full h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                    <div
-                      className="h-full rounded-full"
-                      style={{
-                        width: `${Math.min(100, (totalActual / totalPlanned) * 100)}%`,
-                        background: totalActual > totalPlanned ? "#c0392b" : "#27ae60",
-                      }}
-                    />
-                  </div>
-                )}
-              </a>
-            )}
+              </div>
+              {totalPlanned > 0 && (
+                <div className="mt-3 w-full h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${Math.min(100, (totalActual / totalPlanned) * 100)}%`,
+                      background: totalActual > totalPlanned ? "#c0392b" : "#27ae60",
+                    }}
+                  />
+                </div>
+              )}
+            </a>
           </div>
 
           {/* Task progress chart */}
@@ -242,10 +243,12 @@ export default function DashboardPage() {
           })()}
 
           {/* Budget pie + bars */}
-          {(totalPlanned > 0 || totalActual > 0) && (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 mb-6">
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 mb-6">
               <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                 <span className="text-sm font-semibold" style={{ color: "#011e41" }}>תקציב לפי קטגוריה</span>
+                  {pieSlices.length > 0 && !hasPieActual && (
+                    <span className="text-xs text-gray-400 font-normal">(מתוכנן)</span>
+                  )}
                 <div className="flex gap-4 text-xs text-gray-500">
                   <span className="flex items-center gap-1">
                     <span className="w-3 h-2 rounded-sm inline-block" style={{ background: "#dbeafe" }} />
@@ -322,8 +325,13 @@ export default function DashboardPage() {
                   ))}
                 </div>
               )}
+
+              {catEntries.length === 0 && (
+                <div className="text-center py-8 text-sm text-gray-400">
+                  אין נתוני תקציב עדיין — <a href="/budget" className="underline hover:text-gray-600">הוסף רשומות בתקציב</a>
+                </div>
+              )}
             </div>
-          )}
 
           {/* Overdue tasks */}
           {overdueList.length > 0 && (
