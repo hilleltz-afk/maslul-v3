@@ -81,6 +81,7 @@ class ProjectRead(BaseRead):
     name: str
     address: Optional[str] = None
     budget_total: Optional[float] = None
+    archived_at: Optional[datetime] = None
 
 
 class ProjectAliasCreate(BaseModel):

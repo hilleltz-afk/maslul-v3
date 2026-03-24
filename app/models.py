@@ -95,6 +95,7 @@ class Project(Base):
     name = Column(String, nullable=False)
     address = Column(String, nullable=True)
     budget_total = Column(Float, nullable=True)
+    archived_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at = Column(DateTime, nullable=True)
