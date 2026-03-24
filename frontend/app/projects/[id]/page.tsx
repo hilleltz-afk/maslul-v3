@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { apiFetch, apiUpload } from "@/lib/api";
+import ApplyTemplateModal from "@/components/ApplyTemplateModal";
 
 const TENANT_ID = "f7d67cb1-3414-47a4-8ddb-2845d11d32ff";
 
@@ -69,6 +70,9 @@ export default function ProjectPage() {
 
   // Contacts
   const [contacts, setContacts] = useState<Contact[]>([]);
+
+  // Template
+  const [showApplyTemplate, setShowApplyTemplate] = useState(false);
 
   // Project settings
   const [showProjectSettings, setShowProjectSettings] = useState(false);
@@ -564,7 +568,23 @@ export default function ProjectPage() {
           className="mr-auto text-gray-400 hover:text-gray-600 text-sm px-2 py-1 rounded hover:bg-gray-100"
           title="הגדרות פרויקט"
         >⚙</button>
+        <button
+          onClick={() => setShowApplyTemplate(true)}
+          className="text-sm px-3 py-1 rounded font-medium"
+          style={{ background: "#f0f4ff", color: "#3b5bdb", border: "1px solid #c5d0fc" }}
+          title="החל טמפלייט על פרויקט"
+        >
+          📋 טמפלייט
+        </button>
       </div>
+
+      {showApplyTemplate && (
+        <ApplyTemplateModal
+          projectId={projectId}
+          onClose={() => setShowApplyTemplate(false)}
+          onApplied={() => { loadProject(); }}
+        />
+      )}
 
       {/* Project settings modal */}
       {showProjectSettings && (
