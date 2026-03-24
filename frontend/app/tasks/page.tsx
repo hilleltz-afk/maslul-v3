@@ -87,6 +87,12 @@ export default function TasksPage() {
 
   const overdue = (t: Task) => t.end_date && t.end_date.slice(0, 10) < today && t.status !== "done";
 
+  async function deleteTask(id: string, title: string) {
+    if (!confirm(`למחוק את המשימה "${title}"?`)) return;
+    await apiFetch(`/tenants/${TENANT_ID}/tasks/${id}`, { method: "DELETE" });
+    setTasks(prev => prev.filter(t => t.id !== id));
+  }
+
   async function handleAttach(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !attachTask) return;
@@ -221,6 +227,15 @@ export default function TasksPage() {
                   title="צרף מסמך"
                 >
                   📎
+                </button>
+
+                {/* Delete button */}
+                <button
+                  onClick={e => { e.preventDefault(); deleteTask(t.id, t.title); }}
+                  className="text-gray-300 hover:text-red-500 text-base flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="מחק משימה"
+                >
+                  🗑️
                 </button>
               </div>
             );
