@@ -76,22 +76,22 @@ export default function ProjectsPage() {
         <div className="bg-white rounded-xl p-5 shadow-sm mb-4 flex gap-3 flex-wrap items-end border border-gray-100">
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-500">שם הפרויקט *</label>
-            <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} className="border border-gray-200 rounded px-3 py-1.5 text-sm outline-none w-56 focus:border-blue-300" placeholder="רמת אביב גימל" />
+            <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} onKeyDown={e => e.key === "Enter" && createProject()} className="border border-gray-200 rounded px-3 py-2 text-sm outline-none w-56 focus:border-blue-300" placeholder="רמת אביב גימל" />
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-500">גוש *</label>
-            <input value={form.gush} onChange={e => setForm(p => ({ ...p, gush: e.target.value }))} className="border border-gray-200 rounded px-3 py-1.5 text-sm outline-none w-24 focus:border-blue-300" placeholder="6100" />
+            <input value={form.gush} onChange={e => setForm(p => ({ ...p, gush: e.target.value }))} onKeyDown={e => e.key === "Enter" && createProject()} className="border border-gray-200 rounded px-3 py-2 text-sm outline-none w-24 focus:border-blue-300" placeholder="6100" />
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-500">חלקה *</label>
-            <input value={form.helka} onChange={e => setForm(p => ({ ...p, helka: e.target.value }))} className="border border-gray-200 rounded px-3 py-1.5 text-sm outline-none w-24 focus:border-blue-300" placeholder="120" />
+            <input value={form.helka} onChange={e => setForm(p => ({ ...p, helka: e.target.value }))} onKeyDown={e => e.key === "Enter" && createProject()} className="border border-gray-200 rounded px-3 py-2 text-sm outline-none w-24 focus:border-blue-300" placeholder="120" />
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-500">כתובת</label>
-            <input value={form.address} onChange={e => setForm(p => ({ ...p, address: e.target.value }))} className="border border-gray-200 rounded px-3 py-1.5 text-sm outline-none w-48 focus:border-blue-300" placeholder="רח' הרצל 1, תל אביב" />
+            <input value={form.address} onChange={e => setForm(p => ({ ...p, address: e.target.value }))} onKeyDown={e => e.key === "Enter" && createProject()} className="border border-gray-200 rounded px-3 py-2 text-sm outline-none w-48 focus:border-blue-300" placeholder="רח' הרצל 1, תל אביב" />
           </div>
-          <button onClick={createProject} className="px-4 py-1.5 rounded-lg text-sm font-medium text-white" style={{ background: "#27ae60" }}>צור</button>
-          <button onClick={() => setCreating(false)} className="px-4 py-1.5 rounded-lg text-sm text-gray-500 hover:text-gray-700">ביטול</button>
+          <button onClick={createProject} className="px-5 py-2 rounded-lg text-sm font-medium text-white" style={{ background: "#27ae60" }}>צור</button>
+          <button onClick={() => setCreating(false)} className="px-4 py-2 rounded-lg text-sm text-gray-500 hover:text-gray-700">ביטול</button>
         </div>
       )}
 

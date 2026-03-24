@@ -992,7 +992,7 @@ export default function ProjectPage() {
                               autoFocus
                               value={newTaskForm.title}
                               onChange={e => setNewTaskForm(f => ({ ...f, title: e.target.value }))}
-                              onKeyDown={e => { if (e.key === "Escape") { setAddingToStage(null); setNewTaskErrors({}); } }}
+                              onKeyDown={e => { if (e.key === "Escape") { setAddingToStage(null); setNewTaskErrors({}); } if (e.key === "Enter") addTask(stage.id); }}
                               placeholder="שם המשימה..."
                               className={`w-full text-sm border rounded-lg px-3 py-2 outline-none bg-white ${newTaskErrors.title ? "border-red-400" : "border-gray-200 focus:border-blue-400"}`}
                             />

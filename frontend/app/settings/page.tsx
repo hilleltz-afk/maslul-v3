@@ -286,13 +286,13 @@ export default function SettingsPage() {
         <div className="bg-white rounded-xl p-5 shadow-sm mb-6 flex gap-3 flex-wrap items-end">
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-500">שם <span className="text-red-400">*</span></label>
-            <input value={inviteName} onChange={e => setInviteName(e.target.value)} required
-              className={`border rounded px-3 py-1.5 text-sm outline-none w-44 ${!inviteName ? "border-red-200" : "border-gray-200"}`} placeholder="ישראל ישראלי" />
+            <input value={inviteName} onChange={e => setInviteName(e.target.value)} onKeyDown={e => e.key === "Enter" && sendInvite()} required
+              className={`border rounded px-3 py-2 text-sm outline-none w-44 ${!inviteName ? "border-red-200" : "border-gray-200"}`} placeholder="ישראל ישראלי" />
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-500">אימייל <span className="text-red-400">*</span></label>
-            <input value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} type="email" required
-              className={`border rounded px-3 py-1.5 text-sm outline-none w-56 ${!inviteEmail ? "border-red-200" : "border-gray-200"}`} placeholder="user@hadas-capital.com" />
+            <input value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && sendInvite()} type="email" required
+              className={`border rounded px-3 py-2 text-sm outline-none w-56 ${!inviteEmail ? "border-red-200" : "border-gray-200"}`} placeholder="user@hadas-capital.com" />
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-500">תפקיד</label>
@@ -490,11 +490,11 @@ function UserRow({ user, myRole, isSelf, actionLoading, onApprove, onReject, onR
           {user.status === "pending" && (
             <>
               <button onClick={() => onApprove(user.id)} disabled={actionLoading === user.id + "_approve"}
-                className="text-xs px-3 py-1 rounded-lg text-white font-medium" style={{ background: "#27ae60" }}>
+                className="text-xs px-4 py-1.5 rounded-lg text-white font-medium" style={{ background: "#27ae60" }}>
                 {actionLoading === user.id + "_approve" ? "..." : "אשר"}
               </button>
               <button onClick={() => onReject(user.id)} disabled={actionLoading === user.id + "_reject"}
-                className="text-xs px-3 py-1 rounded-lg text-white font-medium" style={{ background: "#e74c3c" }}>
+                className="text-xs px-4 py-1.5 rounded-lg text-white font-medium" style={{ background: "#e74c3c" }}>
                 {actionLoading === user.id + "_reject" ? "..." : "דחה"}
               </button>
             </>
@@ -502,7 +502,7 @@ function UserRow({ user, myRole, isSelf, actionLoading, onApprove, onReject, onR
 
           {user.status === "rejected" && (
             <button onClick={() => onApprove(user.id)} disabled={actionLoading === user.id + "_approve"}
-              className="text-xs px-3 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">
+              className="text-xs px-4 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">
               {actionLoading === user.id + "_approve" ? "..." : "הפעל מחדש"}
             </button>
           )}
@@ -510,7 +510,7 @@ function UserRow({ user, myRole, isSelf, actionLoading, onApprove, onReject, onR
           {user.status === "active" && (
             <button
               onClick={() => onEditProjects(user.id)}
-              className="text-xs px-3 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+              className="text-xs px-4 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
               title="ניהול שיוך לפרויקטים"
             >פרויקטים</button>
           )}
@@ -519,7 +519,7 @@ function UserRow({ user, myRole, isSelf, actionLoading, onApprove, onReject, onR
             <button
               onClick={() => onDelete(user.id)}
               disabled={actionLoading === user.id + "_delete"}
-              className="text-xs px-2 py-1 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+              className="text-xs px-3 py-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
               title="מחק משתמש"
             >
               {actionLoading === user.id + "_delete" ? "..." : "🗑"}

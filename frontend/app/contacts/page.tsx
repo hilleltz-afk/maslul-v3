@@ -134,6 +134,7 @@ export default function ContactsPage() {
                   <input
                     value={(form as any)[key]}
                     onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))}
+                    onKeyDown={e => e.key === "Enter" && saveContact()}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-300"
                   />
                 </div>
@@ -180,8 +181,8 @@ export default function ContactsPage() {
                 {c.notes && <div className="text-xs text-gray-300 mt-1 truncate">{c.notes}</div>}
               </div>
               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                <button onClick={() => openEdit(c)} className="text-xs text-gray-400 hover:text-blue-600 px-2 py-1 rounded hover:bg-gray-50">✏️</button>
-                <button onClick={() => deleteContact(c.id, c.name)} className="text-xs text-gray-400 hover:text-red-500 px-2 py-1 rounded hover:bg-red-50">🗑️</button>
+                <button onClick={() => openEdit(c)} className="text-sm text-gray-400 hover:text-blue-600 px-3 py-1.5 rounded hover:bg-gray-50">✏️</button>
+                <button onClick={() => deleteContact(c.id, c.name)} className="text-sm text-gray-400 hover:text-red-500 px-3 py-1.5 rounded hover:bg-red-50">🗑️</button>
               </div>
             </div>
           ))}
