@@ -99,6 +99,7 @@ export default function ProjectPage() {
   const quoteFileRef = useRef<HTMLInputElement>(null);
   const [addingMilestoneToQuote, setAddingMilestoneToQuote] = useState<string | null>(null);
   const [newMilestone, setNewMilestone] = useState({ description: "", amount: "", due_date: "" });
+  const [editingMilestone, setEditingMilestone] = useState<{ id: string; field: "description" | "amount"; value: string } | null>(null);
   // Project members
   const [projectMembers, setProjectMembers] = useState<{id:string;user_id:string;role:string;user_name?:string;user_email?:string}[]>([]);
   const [addingMember, setAddingMember] = useState(false);
@@ -315,6 +316,19 @@ export default function ProjectPage() {
     setProjectQuotes(prev => prev.map(q => q.id === quoteId ? { ...q, milestones: [...q.milestones, ms] } : q));
     setAddingMilestoneToQuote(null);
     setNewMilestone({ description: "", amount: "", due_date: "" });
+  }
+
+  async function saveMilestoneField(quoteId: string, msId: string, field: "description" | "amount", value: string) {
+    if (!value.trim()) return;
+    const body = field === "amount" ? { amount: parseFloat(value) } : { description: value };
+    const updated = await apiFetch(`/tenants/${TENANT_ID}/quotes/${quoteId}/milestones/${msId}`, { method: "PUT", body: JSON.stringify(body) });
+    setProjectQuotes(prev => prev.map(q => q.id === quoteId ? { ...q, milestones: q.milestones.map(m => m.id === msId ? { ...m, ...updated } : m) } : q));
+    setEditingMilestone(null);
+  }
+
+  async function deleteMilestone(quoteId: string, msId: string) {
+    await apiFetch(`/tenants/${TENANT_ID}/quotes/${quoteId}/milestones/${msId}`, { method: "DELETE" });
+    setProjectQuotes(prev => prev.map(q => q.id === quoteId ? { ...q, milestones: q.milestones.filter(m => m.id !== msId) } : q));
   }
 
   async function loadComments(taskId: string) {
@@ -1750,8 +1764,10 @@ export default function ProjectPage() {
                         <div className="px-5 pb-4 space-y-1.5">
                           {q.milestones.map(ms => {
                             const isOverdue = !ms.is_paid && ms.due_date && new Date(ms.due_date) < new Date();
+                            const editingDesc = editingMilestone?.id === ms.id && editingMilestone.field === "description";
+                            const editingAmt = editingMilestone?.id === ms.id && editingMilestone.field === "amount";
                             return (
-                              <div key={ms.id} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
+                              <div key={ms.id} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm group/ms"
                                 style={{ background: ms.is_paid ? "#f0fdf4" : isOverdue ? "#fef3f2" : "#fafafa" }}>
                                 <input
                                   type="checkbox"
@@ -1759,12 +1775,49 @@ export default function ProjectPage() {
                                   onChange={() => toggleMilestonePaid(q, ms)}
                                   className="accent-green-600 flex-shrink-0"
                                 />
-                                <span className="flex-1 min-w-0"
-                                  style={{ textDecoration: ms.is_paid ? "line-through" : "none", color: ms.is_paid ? "#aaa" : isOverdue ? "#c0392b" : "#333" }}>
-                                  {ms.description}
-                                </span>
-                                <span className="font-medium text-xs flex-shrink-0"
-                                  style={{ color: ms.is_paid ? "#aaa" : "#011e41" }}>{fmt(ms.amount)}</span>
+                                {editingDesc ? (
+                                  <input
+                                    autoFocus
+                                    className="flex-1 min-w-0 text-sm border border-blue-300 rounded px-2 py-0.5 outline-none"
+                                    value={editingMilestone.value}
+                                    onChange={e => setEditingMilestone(p => p ? { ...p, value: e.target.value } : p)}
+                                    onBlur={() => saveMilestoneField(q.id, ms.id, "description", editingMilestone.value)}
+                                    onKeyDown={e => {
+                                      if (e.key === "Enter") saveMilestoneField(q.id, ms.id, "description", editingMilestone.value);
+                                      if (e.key === "Escape") setEditingMilestone(null);
+                                    }}
+                                  />
+                                ) : (
+                                  <span
+                                    className="flex-1 min-w-0 cursor-pointer hover:underline"
+                                    title="לחץ לעריכה"
+                                    onClick={() => setEditingMilestone({ id: ms.id, field: "description", value: ms.description })}
+                                    style={{ textDecoration: ms.is_paid ? "line-through" : "none", color: ms.is_paid ? "#aaa" : isOverdue ? "#c0392b" : "#333" }}>
+                                    {ms.description}
+                                  </span>
+                                )}
+                                {editingAmt ? (
+                                  <input
+                                    autoFocus
+                                    type="number"
+                                    className="w-28 text-sm border border-blue-300 rounded px-2 py-0.5 outline-none text-left flex-shrink-0"
+                                    value={editingMilestone.value}
+                                    onChange={e => setEditingMilestone(p => p ? { ...p, value: e.target.value } : p)}
+                                    onBlur={() => saveMilestoneField(q.id, ms.id, "amount", editingMilestone.value)}
+                                    onKeyDown={e => {
+                                      if (e.key === "Enter") saveMilestoneField(q.id, ms.id, "amount", editingMilestone.value);
+                                      if (e.key === "Escape") setEditingMilestone(null);
+                                    }}
+                                  />
+                                ) : (
+                                  <span
+                                    className="font-medium text-xs flex-shrink-0 cursor-pointer hover:underline"
+                                    title="לחץ לעריכת סכום"
+                                    onClick={() => setEditingMilestone({ id: ms.id, field: "amount", value: String(ms.amount) })}
+                                    style={{ color: ms.is_paid ? "#aaa" : "#011e41" }}>
+                                    {fmt(ms.amount)}
+                                  </span>
+                                )}
                                 <input
                                   type="date"
                                   value={ms.due_date ? ms.due_date.slice(0, 10) : ""}
@@ -1773,9 +1826,12 @@ export default function ProjectPage() {
                                   style={{ color: isOverdue ? "#c0392b" : "#888" }}
                                   title="תאריך צפוי לתשלום"
                                 />
-                                {ms.is_paid === 1 && ms.due_date && (
-                                  <span className="text-xs text-green-600 flex-shrink-0">✓ שולם</span>
-                                )}
+                                {ms.is_paid === 1 && <span className="text-xs text-green-600 flex-shrink-0">✓ שולם</span>}
+                                <button
+                                  onClick={() => deleteMilestone(q.id, ms.id)}
+                                  className="opacity-0 group-hover/ms:opacity-100 text-gray-300 hover:text-red-500 transition-all flex-shrink-0 text-xs px-1"
+                                  title="מחק אבן דרך"
+                                >✕</button>
                               </div>
                             );
                           })}
@@ -1788,9 +1844,11 @@ export default function ProjectPage() {
                           {addingMilestoneToQuote === q.id ? (
                             <div className="flex gap-2 items-end pt-1 flex-wrap">
                               <input
+                                autoFocus
                                 placeholder="תיאור תשלום"
                                 value={newMilestone.description}
                                 onChange={e => setNewMilestone(p => ({ ...p, description: e.target.value }))}
+                                onKeyDown={e => e.key === "Enter" && submitAddMilestone(q.id)}
                                 className="border border-gray-200 rounded px-2 py-1 text-xs outline-none flex-1 min-w-32"
                               />
                               <input
@@ -1798,6 +1856,7 @@ export default function ProjectPage() {
                                 placeholder="סכום ₪"
                                 value={newMilestone.amount}
                                 onChange={e => setNewMilestone(p => ({ ...p, amount: e.target.value }))}
+                                onKeyDown={e => e.key === "Enter" && submitAddMilestone(q.id)}
                                 className="border border-gray-200 rounded px-2 py-1 text-xs outline-none w-28"
                               />
                               <input

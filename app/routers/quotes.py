@@ -405,6 +405,30 @@ def update_milestone(
     return ms
 
 
+@router.delete("/{quote_id}/milestones/{milestone_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_milestone(
+    tenant_id: UUID,
+    quote_id: UUID,
+    milestone_id: UUID,
+    db: Session = Depends(get_db),
+    user_id: str | None = Depends(get_current_user_id),
+):
+    ms = (
+        db.query(models.PaymentMilestone)
+        .filter(
+            models.PaymentMilestone.id == milestone_id,
+            models.PaymentMilestone.quote_id == quote_id,
+            models.PaymentMilestone.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not ms:
+        raise HTTPException(status_code=404, detail="אבן דרך לא נמצאה")
+    ms.deleted_at = datetime.now(timezone.utc)
+    db.commit()
+    return None
+
+
 @router.post("/{quote_id}/milestones", response_model=schemas.PaymentMilestoneRead, status_code=status.HTTP_201_CREATED)
 def add_milestone(
     tenant_id: UUID,
