@@ -88,13 +88,17 @@ export default function ProjectsPage() {
 
   async function createProject() {
     if (!form.name || !form.gush || !form.helka) return;
-    const p = await apiFetch(`/tenants/${TENANT_ID}/projects/`, {
-      method: "POST",
-      body: JSON.stringify({ name: form.name, gush: form.gush, helka: form.helka, address: form.address || undefined }),
-    });
-    setProjects(prev => [...prev, p]);
-    setForm({ name: "", gush: "", helka: "", address: "" });
-    setCreating(false);
+    try {
+      const p = await apiFetch(`/tenants/${TENANT_ID}/projects/`, {
+        method: "POST",
+        body: JSON.stringify({ name: form.name, gush: form.gush, helka: form.helka, address: form.address || undefined }),
+      });
+      setProjects(prev => [...prev, p]);
+      setForm({ name: "", gush: "", helka: "", address: "" });
+      setCreating(false);
+    } catch (err: any) {
+      alert(err.message || "שגיאה ביצירת פרויקט");
+    }
   }
 
   function projectStats(projectId: string) {
