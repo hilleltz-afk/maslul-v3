@@ -87,6 +87,11 @@ export default function TasksPage() {
 
   const overdue = (t: Task) => t.end_date && t.end_date.slice(0, 10) < today && t.status !== "done";
 
+  async function updateTaskStatus(id: string, status: string) {
+    await apiFetch(`/tenants/${TENANT_ID}/tasks/${id}`, { method: "PUT", body: JSON.stringify({ status }) });
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t));
+  }
+
   async function deleteTask(id: string, title: string) {
     if (!confirm(`למחוק את המשימה "${title}"?`)) return;
     await apiFetch(`/tenants/${TENANT_ID}/tasks/${id}`, { method: "DELETE" });
@@ -215,10 +220,17 @@ export default function TasksPage() {
                   </div>
                 </a>
 
-                {/* Status badge */}
-                <span className="text-xs px-3 py-1 rounded-full font-medium flex-shrink-0" style={{ background: s.color + "20", color: s.color }}>
-                  {s.label}
-                </span>
+                {/* Status — clickable dropdown */}
+                <select
+                  value={t.status}
+                  onChange={e => updateTaskStatus(t.id, e.target.value)}
+                  className="text-xs px-3 py-1 rounded-full font-medium flex-shrink-0 cursor-pointer border-0 outline-none appearance-none"
+                  style={{ background: s.color + "22", color: s.color }}
+                >
+                  {Object.entries(STATUS_LABELS).map(([val, { label }]) => (
+                    <option key={val} value={val}>{label}</option>
+                  ))}
+                </select>
 
                 {/* Attach doc button */}
                 <button
