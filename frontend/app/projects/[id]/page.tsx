@@ -582,7 +582,7 @@ export default function ProjectPage() {
         <ApplyTemplateModal
           projectId={projectId}
           onClose={() => setShowApplyTemplate(false)}
-          onApplied={() => { loadProject(); }}
+          onApplied={() => { router.refresh(); window.location.reload(); }}
         />
       )}
 
