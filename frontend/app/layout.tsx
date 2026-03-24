@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import RegisterSW from "@/components/RegisterSW";
 
 export const metadata: Metadata = {
   title: "מסלול | Hadas Capital",
@@ -17,15 +18,22 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="he" dir="rtl">
       <head>
-        <link rel="apple-touch-icon" href="/icon-192.svg" />
+        {/* iOS icons — must be PNG */}
+        <link rel="apple-touch-icon" sizes="180x180" href="/logo.png" />
+        <link rel="apple-touch-icon" sizes="152x152" href="/logo.png" />
+        <link rel="apple-touch-icon" sizes="120x120" href="/logo.png" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-title" content="מסלול" />
       </head>
       <body>
+        <RegisterSW />
         {children}
       </body>
     </html>

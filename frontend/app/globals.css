@@ -24,8 +24,23 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
   direction: rtl;
+  -webkit-font-smoothing: antialiased;
+  /* PWA: prevent overscroll bounce on iOS */
+  overscroll-behavior: none;
 }
 
 * {
   box-sizing: border-box;
+  /* Prevent iOS tap highlight flash */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Safe area support (iPhone notch / home bar) */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Smooth scroll on iOS */
+.overflow-y-auto, .overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
 }

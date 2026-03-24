@@ -70,6 +70,12 @@ export default function Sidebar() {
   const [overdueTasks, setOverdueTasks] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  // PWA install
+  const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
+  const [isIOS, setIsIOS] = useState(false);
+  const [showIOSHint, setShowIOSHint] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
+
   // Notifications
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifItems, setNotifItems] = useState<NotifItem[]>([]);
@@ -86,6 +92,23 @@ export default function Sidebar() {
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
+
+  // PWA install detection
+  useEffect(() => {
+    // iOS detection
+    const ua = navigator.userAgent;
+    const ios = /iphone|ipad|ipod/i.test(ua) && !(window as any).MSStream;
+    setIsIOS(ios);
+    // Already installed (standalone mode)
+    if (window.matchMedia("(display-mode: standalone)").matches || (navigator as any).standalone) {
+      setIsInstalled(true);
+      return;
+    }
+    // Chrome/Edge desktop install prompt
+    const handler = (e: Event) => { e.preventDefault(); setInstallPrompt(e); };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -425,6 +448,32 @@ export default function Sidebar() {
             onClick={closeDrawer}
           />
         </div>
+
+        {/* PWA Install */}
+        {!isInstalled && (installPrompt || isIOS) && (
+          <div className="px-4 pb-2">
+            <button
+              onClick={() => {
+                if (installPrompt) {
+                  (installPrompt as any).prompt();
+                  (installPrompt as any).userChoice.then(() => { setInstallPrompt(null); setIsInstalled(true); });
+                } else {
+                  setShowIOSHint(v => !v);
+                }
+              }}
+              className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium transition-colors"
+              style={{ background: "rgba(252,213,98,0.15)", color: "#fcd562", border: "1px solid rgba(252,213,98,0.3)" }}
+            >
+              <span>⬇️</span> התקן אפליקציה
+            </button>
+            {showIOSHint && (
+              <div className="mt-2 p-3 rounded-lg text-xs leading-relaxed" style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.7)" }}>
+                ב-Safari: לחץ על <strong style={{ color: "#fcd562" }}>📤</strong> ובחר<br />
+                <strong style={{ color: "#fcd562" }}>"הוסף למסך הבית"</strong>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Copyright */}
         <div className="px-6 py-1.5 text-center" style={{ fontSize: 10, color: "rgba(255,255,255,0.25)" }}>
