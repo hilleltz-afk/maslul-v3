@@ -122,8 +122,8 @@ export default function TemplatesPage() {
     <div className="min-h-screen" style={{ background: "#f5f6f8" }}>
       <Sidebar />
       {/* row: editor (flex:1) on LEFT, list (260px) on RIGHT adjacent to sidebar */}
-      {/* row-reverse: FIRST child in DOM = rightmost. Template list is first → RIGHT. Editor is second → LEFT. */}
-      <main className="md:mr-56" style={{ display: "flex", flexDirection: "row-reverse", height: "100vh", overflow: "hidden" }}>
+      {/* dir=rtl document: flex row flows RIGHT→LEFT. First child = rightmost. Template list first → RIGHT adjacent to sidebar. */}
+      <main className="md:mr-56" style={{ display: "flex", flexDirection: "row", height: "100vh", overflow: "hidden" }}>
 
         {/* ── Template list (FIRST in DOM → rightmost in row-reverse → adjacent to sidebar) ── */}
         <div style={{
