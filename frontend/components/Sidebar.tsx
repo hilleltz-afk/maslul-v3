@@ -221,16 +221,14 @@ export default function Sidebar() {
         style={{ background: "#011e41" }}
       >
         {/* Logo + Bell */}
-        <div className="px-6 py-5 border-b border-white/10 flex items-center justify-between">
-          <div className="flex flex-col items-center gap-1">
-            <Image src="/logo.png" alt="Hadas Capital" width={72} height={72} className="rounded-lg" />
-            <div className="text-center">
-              <div className="text-white font-bold text-lg leading-tight">Hadas Capital</div>
-              <div className="text-xs mt-0.5" style={{ color: "#fcd562" }}>מסלול</div>
-            </div>
+        <div className="px-4 py-5 border-b border-white/10 flex flex-col items-center gap-1 relative">
+          <Image src="/logo.png" alt="Hadas Capital" width={72} height={72} className="rounded-lg" />
+          <div className="text-center">
+            <div className="text-white font-bold text-lg leading-tight">Hadas Capital</div>
+            <div className="text-xs mt-0.5" style={{ color: "#fcd562" }}>מסלול</div>
           </div>
           {/* Notification bell */}
-          <div className="relative" ref={notifRef}>
+          <div className="absolute top-4 left-4" ref={notifRef}>
             <button
               onClick={() => setNotifOpen(o => !o)}
               className="relative w-8 h-8 flex items-center justify-center rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-colors"
