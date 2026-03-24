@@ -10,6 +10,33 @@ interface Task { id: string; status: string; end_date?: string; title: string; p
 interface Project { id: string; name: string; }
 interface BudgetEntry { id: string; project_id: string; category: string; amount: number; is_planned: number; }
 
+const PIE_COLORS = ["#011e41","#2980b9","#27ae60","#e67e22","#c0392b","#9b59b6","#1abc9c","#f39c12","#e74c3c","#3498db","#95a5a6"];
+
+function PieChart({ slices }: { slices: { label: string; value: number; color: string }[] }) {
+  const total = slices.reduce((s, d) => s + d.value, 0);
+  if (total === 0) return null;
+  const cx = 80, cy = 80, r = 68;
+  let angle = -Math.PI / 2;
+  const paths = slices.map(d => {
+    const a = (d.value / total) * 2 * Math.PI;
+    const x1 = cx + r * Math.cos(angle);
+    const y1 = cy + r * Math.sin(angle);
+    angle += a;
+    const x2 = cx + r * Math.cos(angle);
+    const y2 = cy + r * Math.sin(angle);
+    return { ...d, path: `M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${a > Math.PI ? 1 : 0},1 ${x2},${y2} Z` };
+  });
+  return (
+    <svg width={160} height={160} viewBox="0 0 160 160">
+      {paths.map((s, i) => (
+        <path key={i} d={s.path} fill={s.color} stroke="white" strokeWidth={1.5}>
+          <title>{s.label}: {Math.round((s.value / total) * 100)}%</title>
+        </path>
+      ))}
+    </svg>
+  );
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [userName, setUserName] = useState("");
@@ -24,7 +51,6 @@ export default function DashboardPage() {
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) { router.replace("/login"); return; }
-
     try {
       const payload = JSON.parse(atob(token.split(".")[1]));
       setUserName(payload.name || payload.email);
@@ -40,7 +66,6 @@ export default function DashboardPage() {
       setAllTasks(tasks);
       setExpiringCount(expiring.length);
       setPipelineCount(pipeline.length);
-
       const entries = await Promise.all(
         projs.map((p: Project) =>
           apiFetch(`/tenants/${TENANT_ID}/projects/${p.id}/budget/`).catch(() => [])
@@ -63,7 +88,9 @@ export default function DashboardPage() {
 
   const totalPlanned = filteredEntries.filter(e => e.is_planned === 1).reduce((s, e) => s + e.amount, 0);
   const totalActual = filteredEntries.filter(e => e.is_planned === 0).reduce((s, e) => s + e.amount, 0);
+  const budgetDelta = totalPlanned - totalActual;
 
+  // Category map for pie + bars
   const catMap: Record<string, { planned: number; actual: number }> = {};
   for (const e of filteredEntries) {
     if (!catMap[e.category]) catMap[e.category] = { planned: 0, actual: 0 };
@@ -72,6 +99,11 @@ export default function DashboardPage() {
   }
   const catEntries = Object.entries(catMap).sort((a, b) => (b[1].planned + b[1].actual) - (a[1].planned + a[1].actual));
   const maxCatVal = Math.max(...catEntries.map(([, v]) => Math.max(v.planned, v.actual)), 1);
+
+  // Pie slices — actual expenses by category (non-zero)
+  const pieSlices = catEntries
+    .filter(([, v]) => v.actual > 0)
+    .map(([cat, v], i) => ({ label: cat, value: v.actual, color: PIE_COLORS[i % PIE_COLORS.length] }));
 
   function fmt(n: number) {
     if (n >= 1_000_000) return "₪" + (n / 1_000_000).toFixed(1) + "M";
@@ -118,7 +150,7 @@ export default function DashboardPage() {
       ) : (
         <>
           {/* Stat cards */}
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 mb-6">
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 mb-4">
             {cards.map((card) => (
               <a
                 key={card.label}
@@ -132,6 +164,45 @@ export default function DashboardPage() {
                 {card.sub && <div className="text-xs text-gray-400 mt-0.5">{card.sub}</div>}
               </a>
             ))}
+
+            {/* Budget summary card */}
+            {(totalPlanned > 0 || totalActual > 0) && (
+              <a
+                href="/budget"
+                className="bg-white rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow cursor-pointer border border-gray-100 col-span-2 lg:col-span-1"
+                style={{ borderRight: "4px solid #011e41" }}
+              >
+                <div className="text-xs text-gray-400 mb-2 font-medium">תקציב</div>
+                <div className="flex justify-between items-end">
+                  <div>
+                    <div className="text-xs text-gray-400">מתוכנן</div>
+                    <div className="text-lg font-bold" style={{ color: "#2980b9" }}>{fmt(totalPlanned)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-400">בפועל</div>
+                    <div className="text-lg font-bold" style={{ color: "#27ae60" }}>{fmt(totalActual)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-400">יתרה</div>
+                    <div className="text-lg font-bold" style={{ color: budgetDelta >= 0 ? "#011e41" : "#c0392b" }}>
+                      {fmt(Math.abs(budgetDelta))}
+                      <span className="text-xs font-normal mr-0.5">{budgetDelta >= 0 ? "✓" : "⚠"}</span>
+                    </div>
+                  </div>
+                </div>
+                {totalPlanned > 0 && (
+                  <div className="mt-3 w-full h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${Math.min(100, (totalActual / totalPlanned) * 100)}%`,
+                        background: totalActual > totalPlanned ? "#c0392b" : "#27ae60",
+                      }}
+                    />
+                  </div>
+                )}
+              </a>
+            )}
           </div>
 
           {/* Task progress chart */}
@@ -170,11 +241,11 @@ export default function DashboardPage() {
             );
           })()}
 
-          {/* Budget chart */}
+          {/* Budget pie + bars */}
           {(totalPlanned > 0 || totalActual > 0) && (
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 mb-6">
               <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-                <span className="text-sm font-semibold" style={{ color: "#011e41" }}>תקציב</span>
+                <span className="text-sm font-semibold" style={{ color: "#011e41" }}>תקציב לפי קטגוריה</span>
                 <div className="flex gap-4 text-xs text-gray-500">
                   <span className="flex items-center gap-1">
                     <span className="w-3 h-2 rounded-sm inline-block" style={{ background: "#dbeafe" }} />
@@ -187,6 +258,27 @@ export default function DashboardPage() {
                 </div>
               </div>
 
+              {/* Pie + legend side by side */}
+              {pieSlices.length > 0 && (
+                <div className="flex gap-6 items-center mb-5 flex-wrap">
+                  <PieChart slices={pieSlices} />
+                  <div className="flex flex-col gap-1.5">
+                    {pieSlices.map(s => {
+                      const pct = Math.round((s.value / pieSlices.reduce((a, b) => a + b.value, 0)) * 100);
+                      return (
+                        <div key={s.label} className="flex items-center gap-2 text-xs text-gray-600">
+                          <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: s.color }} />
+                          <span className="min-w-16">{s.label}</span>
+                          <span className="text-gray-400">{fmt(s.value)}</span>
+                          <span className="font-medium" style={{ color: s.color }}>{pct}%</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Usage bar */}
               {totalPlanned > 0 && (
                 <div className="mb-4">
                   <div className="flex justify-between text-xs text-gray-400 mb-1">
@@ -207,6 +299,7 @@ export default function DashboardPage() {
                 </div>
               )}
 
+              {/* Per-category bars */}
               {catEntries.length > 0 && (
                 <div className="space-y-2.5 mt-3">
                   {catEntries.slice(0, 6).map(([cat, vals]) => (

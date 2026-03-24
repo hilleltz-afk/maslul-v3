@@ -50,6 +50,7 @@ export default function BudgetPage() {
   // Quote upload
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [uploadProjectId, setUploadProjectId] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Quote detail expand
@@ -86,12 +87,17 @@ export default function BudgetPage() {
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!uploadProjectId) {
+      setUploadError("יש לבחור פרויקט לפני העלאה");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
     setUploading(true);
     setUploadError("");
     try {
       const fd = new FormData();
       fd.append("file", file);
-      await apiUpload(`/tenants/${TENANT_ID}/quotes/upload`, fd);
+      await apiUpload(`/tenants/${TENANT_ID}/quotes/upload?project_id=${uploadProjectId}`, fd);
       await loadAll();
     } catch (err: any) {
       setUploadError(err.message || "שגיאה בהעלאה");
@@ -366,29 +372,44 @@ export default function BudgetPage() {
         {/* ===== QUOTES TAB ===== */}
         {!loading && tab === "quotes" && (
           <div className="space-y-4">
-            {/* Upload button */}
-            <div className="flex items-center gap-3">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".pdf"
-                className="hidden"
-                onChange={handleUpload}
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium transition-opacity"
-                style={{ background: "#011e41", opacity: uploading ? 0.6 : 1 }}
-              >
-                {uploading ? "מנתח PDF..." : "העלאת הצעת מחיר (PDF)"}
-              </button>
-              {uploading && (
-                <span className="text-sm text-gray-500">Claude מנתח את ההצעה, אנא המתן...</span>
-              )}
-              {uploadError && (
-                <span className="text-sm text-red-600">{uploadError}</span>
-              )}
+            {/* Upload */}
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex flex-col gap-3">
+              <div className="text-sm font-medium" style={{ color: "#011e41" }}>העלאת הצעת מחיר (PDF)</div>
+              <div className="flex items-end gap-3 flex-wrap">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-500">פרויקט <span className="text-red-400">*</span></label>
+                  <select
+                    value={uploadProjectId}
+                    onChange={e => { setUploadProjectId(e.target.value); setUploadError(""); }}
+                    className={`border rounded-lg px-3 py-2 text-sm outline-none bg-white ${!uploadProjectId ? "border-red-200" : "border-gray-200"}`}
+                  >
+                    <option value="">בחר פרויקט...</option>
+                    {projects.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf"
+                  className="hidden"
+                  onChange={handleUpload}
+                />
+                <button
+                  onClick={() => {
+                    if (!uploadProjectId) { setUploadError("יש לבחור פרויקט לפני העלאה"); return; }
+                    fileInputRef.current?.click();
+                  }}
+                  disabled={uploading}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium transition-opacity"
+                  style={{ background: "#011e41", opacity: uploading ? 0.6 : 1 }}
+                >
+                  {uploading ? "⏳ מנתח PDF..." : "📎 בחר קובץ PDF"}
+                </button>
+                {uploading && <span className="text-sm text-gray-500">Claude מנתח את ההצעה, אנא המתן...</span>}
+              </div>
+              {uploadError && <span className="text-sm text-red-600">{uploadError}</span>}
             </div>
 
             {/* Quotes list */}
