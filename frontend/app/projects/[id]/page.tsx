@@ -610,6 +610,30 @@ export default function ProjectPage() {
     loadBudget();
   }
 
+  async function downloadExport() {
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    try {
+      const res = await fetch(`${API_BASE}/tenants/${TENANT_ID}/projects/${projectId}/export`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "שגיאה לא ידועה" }));
+        alert("שגיאה בייצוא: " + (err.detail || res.status));
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `maslul_project.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert("שגיאה בייצוא: " + e.message);
+    }
+  }
+
   async function saveBudgetEntry() {
     if (!editEntry || !editEntry.description.trim() || !editEntry.amount) return;
     try {
@@ -837,13 +861,12 @@ export default function ProjectPage() {
             {t.label}
           </button>
         ))}
-        <a
-          href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/tenants/f7d67cb1-3414-47a4-8ddb-2845d11d32ff/projects/${projectId}/export`}
+        <button
+          onClick={downloadExport}
           className="mr-auto text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 flex items-center gap-1"
-          download
         >
           יצא Excel
-        </a>
+        </button>
       </div>
 
       {/* Tab: Tasks */}
