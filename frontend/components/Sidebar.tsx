@@ -491,6 +491,13 @@ export default function Sidebar() {
             הפרופיל שלי
           </Link>
           <button
+            onClick={() => window.location.reload()}
+            className="text-sm text-white/40 hover:text-white/70 transition-colors"
+            title="רענן עמוד"
+          >
+            🔄 רענן
+          </button>
+          <button
             onClick={logout}
             className="text-sm text-white/40 hover:text-white/70 transition-colors"
           >

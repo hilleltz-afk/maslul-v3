@@ -42,10 +42,17 @@ export default function TemplatesPage() {
   const [newTaskRole, setNewTaskRole]         = useState("");
   const [editTask, setEditTask] = useState<{ stageId: string; taskId: string; title: string; priority: string; assignee_role: string } | null>(null);
 
-  // Stage inline edit
-  const [stageMenu, setStageMenu]           = useState<string | null>(null);
-  const [editingStageId, setEditingStageId] = useState<string | null>(null);
+  // Stage menu / inline edit
+  const [stageMenu, setStageMenu]               = useState<string | null>(null);
+  const [editingStageId, setEditingStageId]     = useState<string | null>(null);
   const [editingStageName, setEditingStageName] = useState("");
+
+  useEffect(() => {
+    if (!stageMenu) return;
+    function handler() { setStageMenu(null); setEditingStageId(null); }
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [stageMenu]);
 
   async function saveEditedStage(stageId: string) {
     if (!selected || !editingStageName.trim()) return;
@@ -115,6 +122,16 @@ export default function TemplatesPage() {
   }
 
   useEffect(() => { load(); }, []);
+
+  // Collapse all stages when template selection changes
+  useEffect(() => {
+    if (!selected) return;
+    const tpl = templates.find(t => t.id === selected);
+    if (!tpl) return;
+    const allCollapsed: Record<string, boolean> = {};
+    tpl.stages.forEach(s => { allCollapsed[s.id] = true; });
+    setCollapsed(allCollapsed);
+  }, [selected]);
 
   const current = templates.find(t => t.id === selected) ?? null;
 
@@ -286,18 +303,7 @@ export default function TemplatesPage() {
                         {isCollapsed ? "▸" : "▾"}
                       </span>
                       <div style={{ width: 12, height: 12, borderRadius: "50%", background: stage.color, flexShrink: 0 }} />
-                      {editingStageId === stage.id ? (
-                        <input
-                          value={editingStageName}
-                          onChange={e => setEditingStageName(e.target.value)}
-                          autoFocus
-                          onKeyDown={e => { if (e.key === "Enter") saveEditedStage(stage.id); if (e.key === "Escape") setEditingStageId(null); }}
-                          onBlur={() => saveEditedStage(stage.id)}
-                          style={{ flex: 1, padding: "2px 6px", border: "1px solid #3b82f6", borderRadius: 5, fontSize: 13, direction: "rtl", fontWeight: 700 }}
-                        />
-                      ) : (
-                        <span style={{ fontWeight: 700, color: "#1e293b", fontSize: 14, flex: 1 }}>{stage.name}</span>
-                      )}
+                      <span style={{ fontWeight: 700, color: "#1e293b", fontSize: 14, flex: 1 }}>{stage.name}</span>
                       {stage.estimated_days && (
                         <span style={{ fontSize: 11, background: "#f0f4ff", color: "#3b5bdb", borderRadius: 6, padding: "2px 8px" }}>
                           ~{stage.estimated_days} יום
@@ -309,32 +315,51 @@ export default function TemplatesPage() {
                         + משימה
                       </button>
                       {/* ⋮ menu */}
-                      <div style={{ position: "relative" }}>
+                      <div style={{ position: "relative" }} onMouseDown={e => e.stopPropagation()}>
                         <button
                           onClick={e => { e.stopPropagation(); setStageMenu(stageMenu === stage.id ? null : stage.id); }}
-                          style={{ background: "transparent", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: 16, padding: "0 2px", lineHeight: 1 }}>⋮</button>
+                          style={{ background: "transparent", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: 18, padding: "2px 6px", lineHeight: 1 }}>⋮</button>
                         {stageMenu === stage.id && (
                           <div style={{
-                            position: "absolute", top: "100%", left: 0, background: "#fff",
-                            border: "1px solid #e2e8f0", borderRadius: 8, zIndex: 100,
-                            boxShadow: "0 4px 12px rgba(0,0,0,0.1)", minWidth: 150, direction: "rtl",
+                            position: "absolute", top: "100%", right: 0, background: "#fff",
+                            border: "1px solid #e2e8f0", borderRadius: 8, zIndex: 9999,
+                            boxShadow: "0 4px 16px rgba(0,0,0,0.15)", minWidth: 160, direction: "rtl",
                           }}
-                            onMouseLeave={() => setStageMenu(null)}
+                            onClick={e => e.stopPropagation()}
                           >
-                            <button onClick={() => { setEditingStageId(stage.id); setEditingStageName(stage.name); setStageMenu(null); }}
-                              style={{ display: "block", width: "100%", textAlign: "right", padding: "8px 12px", background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#374151" }}
+                            {editingStageId === stage.id ? (
+                              <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
+                                <input
+                                  value={editingStageName}
+                                  onChange={e => setEditingStageName(e.target.value)}
+                                  autoFocus
+                                  onKeyDown={e => { if (e.key === "Enter") saveEditedStage(stage.id); if (e.key === "Escape") { setEditingStageId(null); } }}
+                                  style={{ width: "100%", padding: "4px 8px", border: "1px solid #3b82f6", borderRadius: 5, fontSize: 13, direction: "rtl", boxSizing: "border-box" }}
+                                />
+                                <div style={{ display: "flex", gap: 6 }}>
+                                  <button onClick={() => saveEditedStage(stage.id)}
+                                    style={{ flex: 1, background: "#011e41", color: "#fff", border: "none", borderRadius: 5, padding: "4px 0", fontSize: 12, cursor: "pointer" }}>✓ שמור</button>
+                                  <button onClick={() => setEditingStageId(null)}
+                                    style={{ background: "#f1f5f9", color: "#374151", border: "none", borderRadius: 5, padding: "4px 10px", fontSize: 12, cursor: "pointer" }}>✕</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <button onClick={() => { setEditingStageId(stage.id); setEditingStageName(stage.name); }}
+                                style={{ display: "block", width: "100%", textAlign: "right", padding: "8px 12px", background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#374151" }}
+                                onMouseEnter={e => (e.currentTarget.style.background = "#f8fafc")}
+                                onMouseLeave={e => (e.currentTarget.style.background = "none")}>
+                                ✏️ שינוי שם
+                              </button>
+                            )}
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", fontSize: 13, color: "#374151", cursor: "pointer" }}
                               onMouseEnter={e => (e.currentTarget.style.background = "#f8fafc")}
                               onMouseLeave={e => (e.currentTarget.style.background = "none")}>
-                              ✏️ שינוי שם
-                            </button>
-                            <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", cursor: "pointer", fontSize: 13, color: "#374151" }}
-                              onMouseEnter={e => (e.currentTarget.style.background = "#f8fafc")}
-                              onMouseLeave={e => (e.currentTarget.style.background = "none")}>
-                              🎨 צבע
-                              <input type="color" value={stage.color || "#011e41"}
-                                onChange={e => updateStageColor(stage.id, e.target.value)}
+                              <span>🎨 צבע</span>
+                              <input type="color"
+                                value={stage.color || "#011e41"}
+                                onChange={e => { updateStageColor(stage.id, e.target.value); setStageMenu(null); }}
                                 style={{ width: 28, height: 22, cursor: "pointer", border: "none", background: "none" }} />
-                            </label>
+                            </div>
                             <hr style={{ margin: "4px 0", border: "none", borderTop: "1px solid #f1f5f9" }} />
                             <button onClick={() => { deleteStage(stage.id); setStageMenu(null); }}
                               style={{ display: "block", width: "100%", textAlign: "right", padding: "8px 12px", background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#ef4444" }}

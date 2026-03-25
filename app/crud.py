@@ -111,17 +111,18 @@ def update_entity(
         old_value = getattr(instance, key)
         if old_value != value:
             setattr(instance, key, value)
-            _log_audit(
-                db,
-                tenant_id=str(tenant_id) if tenant_id else str(getattr(instance, "id")),
-                table_name=table_name,
-                record_id=str(getattr(instance, "id")),
-                field_name=key,
-                old_value=old_value,
-                new_value=value,
-                changed_by=changed_by,
-                action=models.AuditAction.UPDATE,
-            )
+            if tenant_id:  # skip audit log for entities without a direct tenant_id (e.g. TemplateStage/Task)
+                _log_audit(
+                    db,
+                    tenant_id=str(tenant_id),
+                    table_name=table_name,
+                    record_id=str(getattr(instance, "id")),
+                    field_name=key,
+                    old_value=old_value,
+                    new_value=value,
+                    changed_by=changed_by,
+                    action=models.AuditAction.UPDATE,
+                )
     db.flush()
     return instance
 
@@ -134,16 +135,18 @@ def soft_delete_entity(
     if getattr(instance, "deleted_at", None) is None:
         now = datetime.now(timezone.utc)
         instance.deleted_at = now
-        _log_audit(
-            db,
-            tenant_id=str(getattr(instance, "tenant_id", "")),
-            table_name=instance.__tablename__,
-            record_id=str(getattr(instance, "id")),
-            field_name="deleted_at",
-            old_value=None,
-            new_value=str(now),
-            changed_by=changed_by,
-            action=models.AuditAction.DELETE,
-        )
+        tenant_id = getattr(instance, "tenant_id", None)
+        if tenant_id:  # skip audit log for entities without a direct tenant_id
+            _log_audit(
+                db,
+                tenant_id=str(tenant_id),
+                table_name=instance.__tablename__,
+                record_id=str(getattr(instance, "id")),
+                field_name="deleted_at",
+                old_value=None,
+                new_value=str(now),
+                changed_by=changed_by,
+                action=models.AuditAction.DELETE,
+            )
         db.flush()
     return instance
