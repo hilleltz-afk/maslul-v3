@@ -48,27 +48,34 @@ export default function TemplatesPage() {
   const [editingStageName, setEditingStageName] = useState("");
 
   useEffect(() => {
-    if (!stageMenu) return;
-    function handler() { setStageMenu(null); setEditingStageId(null); }
+    if (!stageMenu) {
+      setEditingStageId(null);
+      return;
+    }
+    function handler() { setStageMenu(null); }
     document.addEventListener("click", handler);
     return () => document.removeEventListener("click", handler);
   }, [stageMenu]);
 
   async function saveEditedStage(stageId: string) {
     if (!selected || !editingStageName.trim()) return;
-    await apiFetch(`/tenants/${TENANT_ID}/templates/${selected}/stages/${stageId}`, {
-      method: "PUT", body: JSON.stringify({ name: editingStageName.trim() }),
-    });
-    setEditingStageId(null);
-    await load();
+    try {
+      await apiFetch(`/tenants/${TENANT_ID}/templates/${selected}/stages/${stageId}`, {
+        method: "PUT", body: JSON.stringify({ name: editingStageName.trim() }),
+      });
+      setStageMenu(null);
+      await load();
+    } catch (e: any) { alert("שגיאה בשמירת שם: " + e.message); }
   }
 
   async function updateStageColor(stageId: string, color: string) {
     if (!selected) return;
-    await apiFetch(`/tenants/${TENANT_ID}/templates/${selected}/stages/${stageId}`, {
-      method: "PUT", body: JSON.stringify({ color }),
-    });
-    await load();
+    try {
+      await apiFetch(`/tenants/${TENANT_ID}/templates/${selected}/stages/${stageId}`, {
+        method: "PUT", body: JSON.stringify({ color }),
+      });
+      await load();
+    } catch (e: any) { alert("שגיאה בשמירת צבע: " + e.message); }
   }
 
   // Drag state
@@ -321,7 +328,7 @@ export default function TemplatesPage() {
                           style={{ background: "transparent", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: 18, padding: "2px 6px", lineHeight: 1 }}>⋮</button>
                         {stageMenu === stage.id && (
                           <div style={{
-                            position: "absolute", top: "100%", right: 0, background: "#fff",
+                            position: "absolute", top: "100%", left: 0, background: "#fff",
                             border: "1px solid #e2e8f0", borderRadius: 8, zIndex: 9999,
                             boxShadow: "0 4px 16px rgba(0,0,0,0.15)", minWidth: 160, direction: "rtl",
                           }}
