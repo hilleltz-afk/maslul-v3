@@ -410,24 +410,27 @@ def apply_template(
     created_stages = 0
     created_tasks = 0
 
-    # Build profession → user_id map for auto-assignment
-    contacts = db.query(models.Contact).filter(
-        models.Contact.tenant_id == str(tenant_id),
-        models.Contact.deleted_at.is_(None),
-        models.Contact.profession.isnot(None),
+    # Build profession → user_id map from project_professionals
+    # profession → contact → user (matched by email)
+    proj_profs = db.query(models.ProjectProfessional).filter(
+        models.ProjectProfessional.project_id == str(body.project_id),
+        models.ProjectProfessional.deleted_at.is_(None),
     ).all()
     profession_to_user: dict[str, str] = {}
-    contact_emails = {c.email: c for c in contacts if c.email}
-    if contact_emails:
-        users = db.query(models.User).filter(
+    for pp in proj_profs:
+        contact = db.query(models.Contact).filter(
+            models.Contact.id == pp.contact_id,
+            models.Contact.deleted_at.is_(None),
+        ).first()
+        if not contact or not contact.email:
+            continue
+        user = db.query(models.User).filter(
+            models.User.email == contact.email,
             models.User.tenant_id == str(tenant_id),
-            models.User.email.in_(list(contact_emails.keys())),
             models.User.deleted_at.is_(None),
-        ).all()
-        for u in users:
-            c = contact_emails.get(u.email)
-            if c and c.profession:
-                profession_to_user[c.profession.strip()] = str(u.id)
+        ).first()
+        if user:
+            profession_to_user[pp.profession.strip()] = str(user.id)
 
     for ts in stages:
         template_tasks = (

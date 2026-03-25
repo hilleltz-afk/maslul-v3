@@ -265,6 +265,20 @@ class ProjectMember(Base):
     created_by = Column(GUID(), ForeignKey("users.id"), nullable=True)
 
 
+class ProjectProfessional(Base):
+    """איש מקצוע בפרויקט — קישור בין פרויקט לאיש קשר לפי תפקיד מקצועי."""
+    __tablename__ = "project_professionals"
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(GUID(), ForeignKey("tenants.id"), nullable=False)
+    project_id = Column(GUID(), ForeignKey("projects.id"), nullable=False)
+    contact_id = Column(GUID(), ForeignKey("contacts.id"), nullable=False)
+    profession = Column(String, nullable=False)  # e.g. "אדריכל"
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True)
+    created_by = Column(GUID(), ForeignKey("users.id"), nullable=True)
+
+
 class ProjectTemplate(Base):
     """טמפלייט לפרויקט — מכיל שלבים ומשימות לשכפול."""
     __tablename__ = "project_templates"

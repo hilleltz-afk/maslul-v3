@@ -7,7 +7,7 @@ import os
 import sys
 import psycopg2
 
-HEAD = "f5a6b7c8d9e0"
+HEAD = "k6f7a8b9c0d1"
 
 db_url = os.getenv("DATABASE_URL", "")
 
@@ -289,6 +289,18 @@ DDL = [
         due_date TIMESTAMP,
         paid_at TIMESTAMP,
         is_paid INTEGER DEFAULT 0,
+        created_at TIMESTAMP,
+        updated_at TIMESTAMP,
+        deleted_at TIMESTAMP,
+        created_by UUID
+    )""",
+    # project_professionals
+    """CREATE TABLE IF NOT EXISTS project_professionals (
+        id UUID PRIMARY KEY,
+        tenant_id UUID NOT NULL,
+        project_id UUID NOT NULL,
+        contact_id UUID NOT NULL,
+        profession VARCHAR NOT NULL,
         created_at TIMESTAMP,
         updated_at TIMESTAMP,
         deleted_at TIMESTAMP,

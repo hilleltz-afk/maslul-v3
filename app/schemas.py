@@ -395,6 +395,24 @@ class BudgetSummaryRow(BaseModel):
     diff: float
 
 
+class ProjectProfessionalCreate(BaseModel):
+    contact_id: UUID
+    profession: str
+
+
+class ProjectProfessionalRead(BaseModel):
+    id: UUID
+    project_id: UUID
+    contact_id: UUID
+    profession: str
+    contact_name: Optional[str] = None
+    contact_phone: Optional[str] = None
+    contact_email: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class ProjectMemberCreate(BaseModel):
     user_id: UUID
     role: str = "member"  # manager / member / viewer

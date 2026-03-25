@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { getTenantId } from "@/lib/tenant";
 import { apiFetch, apiUpload } from "@/lib/api";
 import ApplyTemplateModal from "@/components/ApplyTemplateModal";
+import ProfessionCombobox from "@/components/ProfessionCombobox";
 
 const TENANT_ID = getTenantId();
 
@@ -39,7 +40,7 @@ interface Quote { id: string; project_id?: string; vendor?: string; title: strin
 
 const DEFAULT_WIDTHS: Record<string, number> = { title: 300, assignee: 130, contact: 160, status: 140, priority: 110, start_date: 120, end_date: 120, notes: 200 };
 
-type Tab = "tasks" | "kanban" | "gantt" | "budget" | "comments" | "docs";
+type Tab = "tasks" | "kanban" | "gantt" | "budget" | "comments" | "docs" | "professionals";
 
 interface Doc { id: string; name: string; path: string; expiry_date?: string; task_id?: string; stage_id?: string; project_id?: string; }
 
@@ -74,6 +75,13 @@ export default function ProjectPage() {
 
   // Contacts
   const [contacts, setContacts] = useState<Contact[]>([]);
+
+  // Professionals
+  interface Professional { id: string; contact_id: string; profession: string; contact_name?: string; contact_phone?: string; contact_email?: string; }
+  const [professionals, setProfessionals] = useState<Professional[]>([]);
+  const [newProfProfession, setNewProfProfession] = useState("");
+  const [newProfContactId, setNewProfContactId] = useState("");
+  const [addingProf, setAddingProf] = useState(false);
 
   // Template
   const [showApplyTemplate, setShowApplyTemplate] = useState(false);
@@ -176,6 +184,7 @@ export default function ProjectPage() {
   useEffect(() => {
     if (tab === "budget") loadBudget();
     if (tab === "docs") loadProjectDocs();
+    if (tab === "professionals") loadProfessionals();
   }, [tab]);
 
   async function loadProjectDocs() {
@@ -250,6 +259,32 @@ export default function ProjectPage() {
   useEffect(() => {
     commentsEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [comments]);
+
+  async function loadProfessionals() {
+    const data = await apiFetch(`/tenants/${TENANT_ID}/projects/${projectId}/professionals/`).catch(() => []);
+    setProfessionals(data);
+  }
+
+  async function addProfessional() {
+    if (!newProfProfession || !newProfContactId) return;
+    try {
+      const p = await apiFetch(`/tenants/${TENANT_ID}/projects/${projectId}/professionals/`, {
+        method: "POST",
+        body: JSON.stringify({ profession: newProfProfession, contact_id: newProfContactId }),
+      });
+      setProfessionals(prev => [...prev, p]);
+      setNewProfProfession("");
+      setNewProfContactId("");
+      setAddingProf(false);
+    } catch (e: unknown) {
+      alert((e as Error).message || "שגיאה");
+    }
+  }
+
+  async function removeProfessional(id: string) {
+    await apiFetch(`/tenants/${TENANT_ID}/projects/${projectId}/professionals/${id}`, { method: "DELETE" });
+    setProfessionals(prev => prev.filter(p => p.id !== id));
+  }
 
   async function loadBudget() {
     const [entries, summary, quotes] = await Promise.all([
@@ -732,6 +767,7 @@ export default function ProjectPage() {
           { id: "budget" as Tab, label: "תקציב" },
           { id: "docs" as Tab, label: "מסמכים" },
           { id: "comments" as Tab, label: "תגובות" },
+          { id: "professionals" as Tab, label: "אנשי מקצוע" },
         ].map(t => (
           <button
             key={t.id}
@@ -2205,6 +2241,104 @@ export default function ProjectPage() {
                   </div>
                 </div>
               </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Professionals */}
+      {tab === "professionals" && (
+        <div className="flex-1 overflow-y-auto p-8" dir="rtl">
+          <div className="max-w-2xl mx-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold text-gray-800">אנשי מקצוע בפרויקט</h2>
+              <button
+                onClick={() => setAddingProf(true)}
+                className="px-4 py-2 rounded-lg text-white text-sm font-medium"
+                style={{ background: "#011e41" }}
+              >
+                + הוסף איש מקצוע
+              </button>
+            </div>
+
+            {addingProf && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 mb-6">
+                <h3 className="text-sm font-semibold text-gray-700 mb-4">הוספת איש מקצוע</h3>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">מקצוע</label>
+                    <ProfessionCombobox
+                      value={newProfProfession}
+                      onChange={setNewProfProfession}
+                      placeholder="בחר מקצוע..."
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">איש קשר</label>
+                    <select
+                      value={newProfContactId}
+                      onChange={e => setNewProfContactId(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"
+                    >
+                      <option value="">בחר איש קשר...</option>
+                      {contacts.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}{c.profession ? ` (${c.profession})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={addProfessional}
+                      disabled={!newProfProfession || !newProfContactId}
+                      className="px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-40"
+                      style={{ background: "#011e41" }}
+                    >
+                      שמור
+                    </button>
+                    <button
+                      onClick={() => { setAddingProf(false); setNewProfProfession(""); setNewProfContactId(""); }}
+                      className="px-4 py-2 rounded-lg text-sm text-gray-600 border border-gray-200"
+                    >
+                      ביטול
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {professionals.length === 0 ? (
+              <div className="text-center py-16 text-gray-400">
+                <div className="text-4xl mb-3">👷</div>
+                <div className="text-sm">לא הוגדרו אנשי מקצוע לפרויקט זה</div>
+                <div className="text-xs mt-1">הוסף אנשי מקצוע כדי שהטמפלייט יוכל לשייך משימות אוטומטית</div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {professionals.map(p => (
+                  <div key={p.id} className="flex items-center justify-between bg-white border border-gray-200 rounded-xl px-5 py-4 hover:border-gray-300 transition-colors">
+                    <div className="flex items-center gap-4">
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
+                        {p.profession}
+                      </span>
+                      <div>
+                        <div className="text-sm font-medium text-gray-800">{p.contact_name}</div>
+                        <div className="text-xs text-gray-400 mt-0.5 flex gap-3">
+                          {p.contact_phone && <span>{p.contact_phone}</span>}
+                          {p.contact_email && <span>{p.contact_email}</span>}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => removeProfessional(p.id)}
+                      className="text-xs text-red-400 hover:text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
+                    >
+                      הסר
+                    </button>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>

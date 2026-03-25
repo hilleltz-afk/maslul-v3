@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { getTenantId } from "@/lib/tenant";
 import { apiFetch } from "@/lib/api";
 import Sidebar from "@/components/Sidebar";
+import ProfessionCombobox from "@/components/ProfessionCombobox";
 
 const TENANT_ID = getTenantId();
 
@@ -16,7 +17,7 @@ const PRIORITY_OPTIONS = [
   { value: "urgent", label: "דחוף",    color: "#8e44ad" },
 ];
 
-interface TemplateTask  { id: string; title: string; priority: string; order: number; }
+interface TemplateTask  { id: string; title: string; priority: string; order: number; assignee_role?: string; }
 interface TemplateStage { id: string; name: string; color: string; order: number; estimated_days?: number; handling_authority: string; tasks: TemplateTask[]; }
 interface Template      { id: string; name: string; description?: string; stages: TemplateStage[]; }
 
@@ -38,7 +39,8 @@ export default function TemplatesPage() {
   const [addingTask, setAddingTask]           = useState<string | null>(null);
   const [newTaskTitle, setNewTaskTitle]       = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState("medium");
-  const [editTask, setEditTask] = useState<{ stageId: string; taskId: string; title: string; priority: string } | null>(null);
+  const [newTaskRole, setNewTaskRole]         = useState("");
+  const [editTask, setEditTask] = useState<{ stageId: string; taskId: string; title: string; priority: string; assignee_role: string } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -91,9 +93,9 @@ export default function TemplatesPage() {
     if (!newTaskTitle.trim() || !selected) return;
     await apiFetch(`/tenants/${TENANT_ID}/templates/${selected}/stages/${stageId}/tasks`, {
       method: "POST",
-      body: JSON.stringify({ title: newTaskTitle.trim(), priority: newTaskPriority }),
+      body: JSON.stringify({ title: newTaskTitle.trim(), priority: newTaskPriority, assignee_role: newTaskRole || null }),
     });
-    setAddingTask(null); setNewTaskTitle(""); setNewTaskPriority("medium");
+    setAddingTask(null); setNewTaskTitle(""); setNewTaskPriority("medium"); setNewTaskRole("");
     await load();
   }
 
@@ -101,7 +103,7 @@ export default function TemplatesPage() {
     if (!editTask || !selected || !editTask.title.trim()) return;
     await apiFetch(`/tenants/${TENANT_ID}/templates/${selected}/stages/${editTask.stageId}/tasks/${editTask.taskId}`, {
       method: "PUT",
-      body: JSON.stringify({ title: editTask.title.trim(), priority: editTask.priority }),
+      body: JSON.stringify({ title: editTask.title.trim(), priority: editTask.priority, assignee_role: editTask.assignee_role || null }),
     });
     setEditTask(null); await load();
   }
@@ -233,24 +235,39 @@ export default function TemplatesPage() {
                             border: "1px solid #f1f5f9",
                           }}>
                             {editTask?.taskId === task.id ? (
-                              <>
-                                <input value={editTask.title}
-                                  onChange={e => setEditTask({ ...editTask, title: e.target.value })}
-                                  autoFocus
-                                  onKeyDown={e => { if (e.key === "Enter") saveTask(); if (e.key === "Escape") setEditTask(null); }}
-                                  style={{ flex: 1, padding: "3px 8px", border: "1px solid #3b82f6", borderRadius: 5, fontSize: 13, direction: "rtl" }}
-                                />
-                                <select value={editTask.priority}
-                                  onChange={e => setEditTask({ ...editTask, priority: e.target.value })}
-                                  style={{ padding: "3px 6px", border: "1px solid #cbd5e1", borderRadius: 5, fontSize: 12 }}>
-                                  {PRIORITY_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-                                </select>
-                                <button onClick={saveTask} style={{ background: "#011e41", color: "#fff", border: "none", borderRadius: 5, padding: "3px 10px", fontSize: 12, cursor: "pointer" }}>שמור</button>
-                                <button onClick={() => setEditTask(null)} style={{ background: "#f1f5f9", color: "#374151", border: "none", borderRadius: 5, padding: "3px 8px", fontSize: 12, cursor: "pointer" }}>✕</button>
-                              </>
+                              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+                                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                  <input value={editTask.title}
+                                    onChange={e => setEditTask({ ...editTask, title: e.target.value })}
+                                    autoFocus
+                                    onKeyDown={e => { if (e.key === "Enter") saveTask(); if (e.key === "Escape") setEditTask(null); }}
+                                    style={{ flex: 1, padding: "3px 8px", border: "1px solid #3b82f6", borderRadius: 5, fontSize: 13, direction: "rtl" }}
+                                  />
+                                  <select value={editTask.priority}
+                                    onChange={e => setEditTask({ ...editTask, priority: e.target.value })}
+                                    style={{ padding: "3px 6px", border: "1px solid #cbd5e1", borderRadius: 5, fontSize: 12 }}>
+                                    {PRIORITY_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                                  </select>
+                                  <button onClick={saveTask} style={{ background: "#011e41", color: "#fff", border: "none", borderRadius: 5, padding: "3px 10px", fontSize: 12, cursor: "pointer" }}>שמור</button>
+                                  <button onClick={() => setEditTask(null)} style={{ background: "#f1f5f9", color: "#374151", border: "none", borderRadius: 5, padding: "3px 8px", fontSize: 12, cursor: "pointer" }}>✕</button>
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <span style={{ fontSize: 11, color: "#64748b", whiteSpace: "nowrap" }}>איש מקצוע:</span>
+                                  <ProfessionCombobox
+                                    value={editTask.assignee_role}
+                                    onChange={v => setEditTask({ ...editTask, assignee_role: v })}
+                                    placeholder="ללא שיוך..."
+                                  />
+                                </div>
+                              </div>
                             ) : (
                               <>
                                 <span style={{ flex: 1, fontSize: 13, color: "#374151" }}>{task.title}</span>
+                                {task.assignee_role && (
+                                  <span style={{ fontSize: 11, borderRadius: 5, padding: "2px 8px", background: "#e8f0fe", color: "#3b5bdb" }}>
+                                    {task.assignee_role}
+                                  </span>
+                                )}
                                 <span style={{
                                   fontSize: 11, borderRadius: 5, padding: "2px 8px",
                                   background: (PRIORITY_OPTIONS.find(p => p.value === task.priority)?.color ?? "#94a3b8") + "22",
@@ -258,7 +275,7 @@ export default function TemplatesPage() {
                                 }}>
                                   {PRIORITY_OPTIONS.find(p => p.value === task.priority)?.label ?? task.priority}
                                 </span>
-                                <button onClick={() => setEditTask({ stageId: stage.id, taskId: task.id, title: task.title, priority: task.priority })}
+                                <button onClick={() => setEditTask({ stageId: stage.id, taskId: task.id, title: task.title, priority: task.priority, assignee_role: task.assignee_role ?? "" })}
                                   style={{ background: "transparent", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: 13, padding: 0 }}>✏</button>
                                 <button onClick={() => deleteTask(stage.id, task.id)}
                                   style={{ background: "transparent", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 13, padding: 0 }}>✕</button>
@@ -268,20 +285,26 @@ export default function TemplatesPage() {
                         ))}
 
                         {addingTask === stage.id && (
-                          <div style={{ display: "flex", gap: 6, padding: "6px 0", alignItems: "center" }}>
-                            <input value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)}
-                              placeholder="שם המשימה" autoFocus
-                              onKeyDown={e => { if (e.key === "Enter") addTask(stage.id); if (e.key === "Escape") { setAddingTask(null); setNewTaskTitle(""); } }}
-                              style={{ flex: 1, padding: "5px 10px", border: "1px dashed #3b82f6", borderRadius: 6, fontSize: 13, direction: "rtl" }}
-                            />
-                            <select value={newTaskPriority} onChange={e => setNewTaskPriority(e.target.value)}
-                              style={{ padding: "5px 8px", border: "1px solid #cbd5e1", borderRadius: 6, fontSize: 12 }}>
-                              {PRIORITY_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-                            </select>
-                            <button onClick={() => addTask(stage.id)} disabled={!newTaskTitle.trim()}
-                              style={{ background: "#011e41", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 12, cursor: "pointer", opacity: !newTaskTitle.trim() ? 0.5 : 1 }}>הוסף</button>
-                            <button onClick={() => { setAddingTask(null); setNewTaskTitle(""); }}
-                              style={{ background: "#f1f5f9", color: "#374151", border: "none", borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>ביטול</button>
+                          <div style={{ padding: "6px 0", display: "flex", flexDirection: "column", gap: 6 }}>
+                            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                              <input value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)}
+                                placeholder="שם המשימה" autoFocus
+                                onKeyDown={e => { if (e.key === "Enter") addTask(stage.id); if (e.key === "Escape") { setAddingTask(null); setNewTaskTitle(""); setNewTaskRole(""); } }}
+                                style={{ flex: 1, padding: "5px 10px", border: "1px dashed #3b82f6", borderRadius: 6, fontSize: 13, direction: "rtl" }}
+                              />
+                              <select value={newTaskPriority} onChange={e => setNewTaskPriority(e.target.value)}
+                                style={{ padding: "5px 8px", border: "1px solid #cbd5e1", borderRadius: 6, fontSize: 12 }}>
+                                {PRIORITY_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                              </select>
+                              <button onClick={() => addTask(stage.id)} disabled={!newTaskTitle.trim()}
+                                style={{ background: "#011e41", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 12, cursor: "pointer", opacity: !newTaskTitle.trim() ? 0.5 : 1 }}>הוסף</button>
+                              <button onClick={() => { setAddingTask(null); setNewTaskTitle(""); setNewTaskRole(""); }}
+                                style={{ background: "#f1f5f9", color: "#374151", border: "none", borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>ביטול</button>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, paddingRight: 2 }}>
+                              <span style={{ fontSize: 11, color: "#64748b", whiteSpace: "nowrap" }}>איש מקצוע:</span>
+                              <ProfessionCombobox value={newTaskRole} onChange={setNewTaskRole} placeholder="ללא שיוך (אופציונלי)" />
+                            </div>
                           </div>
                         )}
                       </div>
