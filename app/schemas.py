@@ -64,6 +64,9 @@ class ProjectCreate(BaseModel):
     name: constr(min_length=1)
     address: Optional[str] = None
     budget_total: Optional[float] = None
+    description: Optional[str] = None
+    company_name: Optional[str] = None
+    company_id: Optional[str] = None
 
 
 class ProjectUpdate(BaseModel):
@@ -72,6 +75,9 @@ class ProjectUpdate(BaseModel):
     name: Optional[constr(min_length=1)] = None
     address: Optional[str] = None
     budget_total: Optional[float] = None
+    description: Optional[str] = None
+    company_name: Optional[str] = None
+    company_id: Optional[str] = None
 
 
 class ProjectRead(BaseRead):
@@ -81,6 +87,9 @@ class ProjectRead(BaseRead):
     name: str
     address: Optional[str] = None
     budget_total: Optional[float] = None
+    description: Optional[str] = None
+    company_name: Optional[str] = None
+    company_id: Optional[str] = None
     archived_at: Optional[datetime] = None
 
 

@@ -31,7 +31,7 @@ interface Task { id: string; title: string; status: string; priority: string; de
 interface Stage { id: string; name: string; color: string; handling_authority: string; }
 interface User { id: string; name: string; email: string; }
 interface Contact { id: string; name: string; profession?: string; }
-interface Project { id: string; name: string; gush: string; helka: string; budget_total?: number; address?: string; }
+interface Project { id: string; name: string; gush: string; helka: string; budget_total?: number; address?: string; description?: string; company_name?: string; company_id?: string; }
 interface BudgetEntry { id: string; category: string; description: string; vendor?: string; amount: number; entry_date?: string; is_planned: number; notes?: string; }
 interface BudgetSummary { category: string; planned: number; actual: number; diff: number; }
 interface Comment { id: string; content: string; created_at: string; created_by?: string; }
@@ -88,7 +88,7 @@ export default function ProjectPage() {
 
   // Project settings
   const [showProjectSettings, setShowProjectSettings] = useState(false);
-  const [projectForm, setProjectForm] = useState({ name: "", gush: "", helka: "", address: "", budget_total: "" });
+  const [projectForm, setProjectForm] = useState({ name: "", gush: "", helka: "", address: "", budget_total: "", description: "", company_name: "", company_id: "" });
   const [savingProject, setSavingProject] = useState(false);
 
   // Task detail panel
@@ -509,6 +509,9 @@ export default function ProjectPage() {
           helka: projectForm.helka,
           address: projectForm.address || undefined,
           budget_total: projectForm.budget_total ? parseFloat(projectForm.budget_total) : undefined,
+          description: projectForm.description || undefined,
+          company_name: projectForm.company_name || undefined,
+          company_id: projectForm.company_id || undefined,
         }),
       });
       setProject(updated);
@@ -682,8 +685,9 @@ export default function ProjectPage() {
         <span className="text-gray-300">/</span>
         <h1 className="text-xl font-bold" style={{ color: "#011e41" }}>{project.name}</h1>
         <span className="text-xs text-gray-400">גוש {project.gush} חלקה {project.helka}</span>
+        {project.company_name && <span className="text-xs text-gray-400">· {project.company_name}{project.company_id ? ` (${project.company_id})` : ""}</span>}
         <button
-          onClick={() => { setProjectForm({ name: project.name, gush: project.gush, helka: project.helka, address: project.address || "", budget_total: project.budget_total?.toString() || "" }); setShowProjectSettings(true); loadProjectMembers(); }}
+          onClick={() => { setProjectForm({ name: project.name, gush: project.gush, helka: project.helka, address: project.address || "", budget_total: project.budget_total?.toString() || "", description: project.description || "", company_name: project.company_name || "", company_id: project.company_id || "" }); setShowProjectSettings(true); loadProjectMembers(); }}
           className="mr-auto text-gray-400 hover:text-gray-600 text-sm px-2 py-1 rounded hover:bg-gray-100"
           title="הגדרות פרויקט"
         >⚙</button>
@@ -717,6 +721,8 @@ export default function ProjectPage() {
                 { key: "helka", label: "חלקה" },
                 { key: "address", label: "כתובת" },
                 { key: "budget_total", label: "תקציב כולל (₪)", type: "number" },
+                { key: "company_name", label: "שם חברה" },
+                { key: "company_id", label: "ח.פ." },
               ].map(({ key, label, type }) => (
                 <div key={key}>
                   <label className="text-xs text-gray-500 mb-1 block">{label}</label>
@@ -728,6 +734,16 @@ export default function ProjectPage() {
                   />
                 </div>
               ))}
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">מהות הפרויקט</label>
+                <textarea
+                  value={projectForm.description}
+                  onChange={e => setProjectForm(p => ({ ...p, description: e.target.value }))}
+                  rows={3}
+                  placeholder="תיאור קצר של הפרויקט..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-300 resize-none"
+                />
+              </div>
             </div>
 
             {/* Team section */}
