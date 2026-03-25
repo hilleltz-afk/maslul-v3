@@ -97,6 +97,21 @@ def create_entity(
     return obj
 
 
+def _resolve_tenant_id(instance: models.Base) -> Optional[str]:
+    """Return the tenant_id to use for audit logging, or None to skip logging.
+
+    - Entities with a direct tenant_id column → use it.
+    - Tenant itself → use its own id (it IS the tenant).
+    - Entities without tenant_id (e.g. TemplateStage/Task) → None (skip log).
+    """
+    tenant_id = getattr(instance, "tenant_id", None)
+    if tenant_id:
+        return str(tenant_id)
+    if instance.__tablename__ == "tenants":
+        return str(getattr(instance, "id"))
+    return None
+
+
 def update_entity(
     db: Session,
     instance: models.Base,
@@ -104,17 +119,17 @@ def update_entity(
     changed_by: Optional[str] = None,
 ) -> models.Base:
     table_name = instance.__tablename__
-    tenant_id = getattr(instance, "tenant_id", None)
+    tenant_id = _resolve_tenant_id(instance)
     for key, value in updates.items():
         if value is None or not hasattr(instance, key):
             continue
         old_value = getattr(instance, key)
         if old_value != value:
             setattr(instance, key, value)
-            if tenant_id:  # skip audit log for entities without a direct tenant_id (e.g. TemplateStage/Task)
+            if tenant_id:
                 _log_audit(
                     db,
-                    tenant_id=str(tenant_id),
+                    tenant_id=tenant_id,
                     table_name=table_name,
                     record_id=str(getattr(instance, "id")),
                     field_name=key,
@@ -135,11 +150,11 @@ def soft_delete_entity(
     if getattr(instance, "deleted_at", None) is None:
         now = datetime.now(timezone.utc)
         instance.deleted_at = now
-        tenant_id = getattr(instance, "tenant_id", None)
-        if tenant_id:  # skip audit log for entities without a direct tenant_id
+        tenant_id = _resolve_tenant_id(instance)
+        if tenant_id:
             _log_audit(
                 db,
-                tenant_id=str(tenant_id),
+                tenant_id=tenant_id,
                 table_name=instance.__tablename__,
                 record_id=str(getattr(instance, "id")),
                 field_name="deleted_at",
