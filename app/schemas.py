@@ -445,6 +445,7 @@ class TemplateTaskCreate(BaseModel):
     description: Optional[str] = None
     priority: str = "medium"
     order: int = 0
+    assignee_role: Optional[str] = None
 
 
 class TemplateTaskRead(BaseModel):
@@ -454,6 +455,7 @@ class TemplateTaskRead(BaseModel):
     description: Optional[str] = None
     priority: str
     order: int
+    assignee_role: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -463,6 +465,7 @@ class TemplateTaskUpdate(BaseModel):
     description: Optional[str] = None
     priority: Optional[str] = None
     order: Optional[int] = None
+    assignee_role: Optional[str] = None
 
 
 class TemplateStageCreate(BaseModel):

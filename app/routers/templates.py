@@ -65,6 +65,7 @@ def _load_template_full(db: Session, template: models.ProjectTemplate) -> schema
                 description=t.description,
                 priority=t.priority,
                 order=t.order,
+                assignee_role=t.assignee_role,
             ) for t in tasks],
         ))
     return schemas.ProjectTemplateRead(
@@ -123,6 +124,7 @@ def create_template(
                 description=task_in.description,
                 priority=task_in.priority,
                 order=task_in.order if task_in.order else ti,
+                assignee_role=task_in.assignee_role,
                 created_at=now,
                 updated_at=now,
             )
@@ -215,6 +217,7 @@ def add_stage(
             description=task_in.description,
             priority=task_in.priority,
             order=task_in.order if task_in.order else ti,
+            assignee_role=task_in.assignee_role,
             created_at=now,
             updated_at=now,
         ))
@@ -306,6 +309,7 @@ def add_task(
         description=body.description,
         priority=body.priority,
         order=body.order,
+        assignee_role=body.assignee_role,
         created_at=now,
         updated_at=now,
     )
@@ -406,6 +410,25 @@ def apply_template(
     created_stages = 0
     created_tasks = 0
 
+    # Build profession → user_id map for auto-assignment
+    contacts = db.query(models.Contact).filter(
+        models.Contact.tenant_id == str(tenant_id),
+        models.Contact.deleted_at.is_(None),
+        models.Contact.profession.isnot(None),
+    ).all()
+    profession_to_user: dict[str, str] = {}
+    contact_emails = {c.email: c for c in contacts if c.email}
+    if contact_emails:
+        users = db.query(models.User).filter(
+            models.User.tenant_id == str(tenant_id),
+            models.User.email.in_(list(contact_emails.keys())),
+            models.User.deleted_at.is_(None),
+        ).all()
+        for u in users:
+            c = contact_emails.get(u.email)
+            if c and c.profession:
+                profession_to_user[c.profession.strip()] = str(u.id)
+
     for ts in stages:
         template_tasks = (
             db.query(models.TemplateTask)
@@ -445,6 +468,10 @@ def apply_template(
         created_stages += 1
 
         for tt in selected_tasks:
+            # Auto-assign by profession if possible
+            assignee = None
+            if tt.assignee_role:
+                assignee = profession_to_user.get(tt.assignee_role.strip())
             task = models.Task(
                 id=uuid4(),
                 tenant_id=tenant_id,
@@ -454,6 +481,7 @@ def apply_template(
                 description=tt.description,
                 priority=tt.priority,
                 status="in_progress",
+                assignee_id=assignee,
                 start_date=cursor_date,
                 end_date=stage_end,
                 created_at=now,

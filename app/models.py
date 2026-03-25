@@ -302,6 +302,7 @@ class TemplateTask(Base):
     description = Column(Text, nullable=True)
     priority = Column(String, nullable=False, default="medium")
     order = Column(Integer, nullable=False, default=0)
+    assignee_role = Column(String, nullable=True)   # תפקיד/מקצוע מיועד (למשל: "אדריכל")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at = Column(DateTime, nullable=True)
