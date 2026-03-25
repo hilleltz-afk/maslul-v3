@@ -13,12 +13,12 @@ interface Props {
 export default function ProfessionCombobox({ value, onChange, placeholder = "בחר מקצוע...", disabled }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value);
+  const [openUpward, setOpenUpward] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // sync display when value changes externally
   useEffect(() => { setQuery(value); }, [value]);
 
-  // close on outside click
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
@@ -26,6 +26,13 @@ export default function ProfessionCombobox({ value, onChange, placeholder = "ב�
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  function checkDirection() {
+    if (!inputRef.current) return;
+    const rect = inputRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    setOpenUpward(spaceBelow < 240);
+  }
 
   const filtered = query
     ? PROFESSIONS.filter(p => p.includes(query))
@@ -46,10 +53,11 @@ export default function ProfessionCombobox({ value, onChange, placeholder = "ב�
   return (
     <div ref={ref} style={{ position: "relative", width: "100%" }}>
       <input
+        ref={inputRef}
         type="text"
         value={query}
         onChange={handleInput}
-        onFocus={() => setOpen(true)}
+        onFocus={() => { checkDirection(); setOpen(true); }}
         placeholder={placeholder}
         disabled={disabled}
         style={{
@@ -66,13 +74,13 @@ export default function ProfessionCombobox({ value, onChange, placeholder = "ב�
       {open && filtered.length > 0 && (
         <div style={{
           position: "absolute",
-          top: "100%",
+          ...(openUpward ? { bottom: "100%", marginBottom: 4 } : { top: "100%", marginTop: 2 }),
           right: 0,
           left: 0,
           background: "#fff",
           border: "1px solid #ccc",
           borderRadius: 6,
-          zIndex: 999,
+          zIndex: 9999,
           maxHeight: 220,
           overflowY: "auto",
           boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
