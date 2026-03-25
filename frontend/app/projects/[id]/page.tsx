@@ -107,6 +107,7 @@ export default function ProjectPage() {
   const [dragOverBudgetId, setDragOverBudgetId] = useState<string | null>(null);
   const [budgetEntries, setBudgetEntries] = useState<BudgetEntry[]>([]);
   const [budgetSummary, setBudgetSummary] = useState<BudgetSummary[]>([]);
+  const [editEntry, setEditEntry] = useState<BudgetEntry | null>(null);
   const [showAddEntry, setShowAddEntry] = useState(false);
   const [newEntry, setNewEntry] = useState({ category: "בנייה", description: "", vendor: "", amount: "", is_planned: "0", notes: "" });
   const [projectQuotes, setProjectQuotes] = useState<Quote[]>([]);
@@ -600,9 +601,30 @@ export default function ProjectPage() {
   }
 
   async function deleteBudgetEntry(id: string) {
+    if (!confirm("למחוק רשומה זו?")) return;
     await apiFetch(`/tenants/${TENANT_ID}/projects/${projectId}/budget/${id}`, { method: "DELETE" });
     setBudgetEntries(prev => prev.filter(e => e.id !== id));
     loadBudget();
+  }
+
+  async function saveBudgetEntry() {
+    if (!editEntry || !editEntry.description.trim() || !editEntry.amount) return;
+    try {
+      await apiFetch(`/tenants/${TENANT_ID}/projects/${projectId}/budget/${editEntry.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          category: editEntry.category,
+          description: editEntry.description,
+          vendor: editEntry.vendor || undefined,
+          amount: Number(editEntry.amount),
+          is_planned: editEntry.is_planned,
+        }),
+      });
+      setEditEntry(null);
+      loadBudget();
+    } catch (e: any) {
+      alert("שגיאה בשמירה: " + e.message);
+    }
   }
 
   async function toggleBudgetEntryDone(id: string, currentIsPlanned: number) {
@@ -1728,10 +1750,12 @@ export default function ProjectPage() {
                 </tr>
               </thead>
               <tbody>
-                {budgetEntries.map(entry => (
+                {budgetEntries.map(entry => {
+                  const isEditing = editEntry?.id === entry.id;
+                  return (
                   <tr key={entry.id}
-                    draggable
-                    onDragStart={() => setDragBudgetId(entry.id)}
+                    draggable={!isEditing}
+                    onDragStart={() => !isEditing && setDragBudgetId(entry.id)}
                     onDragOver={e => { e.preventDefault(); setDragOverBudgetId(entry.id); }}
                     onDrop={() => {
                       if (!dragBudgetId || dragBudgetId === entry.id) return;
@@ -1745,32 +1769,72 @@ export default function ProjectPage() {
                       setDragBudgetId(null); setDragOverBudgetId(null);
                     }}
                     onDragEnd={() => { setDragBudgetId(null); setDragOverBudgetId(null); }}
-                    style={{ cursor: "grab", background: dragOverBudgetId === entry.id && dragBudgetId !== entry.id ? "#f0f4ff" : undefined }}
-                    className={`border-t border-gray-50 hover:bg-gray-50 group ${!entry.is_planned ? "opacity-60" : ""}`}>
-                    <td className="px-3 py-2 text-center">
-                      <input
-                        type="checkbox"
-                        checked={entry.is_planned === 0}
-                        onChange={() => toggleBudgetEntryDone(entry.id, entry.is_planned)}
-                        title={entry.is_planned ? "סמן כבוצע (יעבור לבפועל)" : "בוצע"}
-                        className="accent-green-600 cursor-pointer"
-                        disabled={entry.is_planned === 0}
-                      />
-                    </td>
-                    <td className="px-5 py-2 text-gray-600">{entry.category}</td>
-                    <td className="px-5 py-2 font-medium text-gray-800" style={{ textDecoration: entry.is_planned === 0 ? "line-through" : "none" }}>{entry.description}</td>
-                    <td className="px-5 py-2 text-gray-500">{entry.vendor || "—"}</td>
-                    <td className="px-5 py-2 font-medium">{fmt(entry.amount)}</td>
-                    <td className="px-5 py-2">
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${entry.is_planned ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"}`}>
-                        {entry.is_planned ? "מתוכנן" : "בפועל"}
-                      </span>
-                    </td>
-                    <td className="px-2 py-2">
-                      <button onClick={() => deleteBudgetEntry(entry.id)} className="text-gray-200 hover:text-red-400 opacity-0 group-hover:opacity-100 text-xs">✕</button>
-                    </td>
+                    style={{ background: isEditing ? "#f0f9ff" : dragOverBudgetId === entry.id && dragBudgetId !== entry.id ? "#f0f4ff" : undefined, cursor: isEditing ? "default" : "grab" }}
+                    className={`border-t border-gray-50 hover:bg-gray-50 group ${!entry.is_planned && !isEditing ? "opacity-60" : ""}`}>
+                    {isEditing ? (
+                      <>
+                        <td className="px-2 py-1.5">
+                          <select value={editEntry.category} onChange={e => setEditEntry({ ...editEntry, category: e.target.value })}
+                            className="w-full text-xs border border-gray-200 rounded px-1.5 py-1 outline-none">
+                            {BUDGET_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input value={editEntry.description} onChange={e => setEditEntry({ ...editEntry, description: e.target.value })}
+                            autoFocus onKeyDown={e => { if (e.key === "Enter") saveBudgetEntry(); if (e.key === "Escape") setEditEntry(null); }}
+                            className="w-full text-xs border border-blue-300 rounded px-1.5 py-1 outline-none" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input value={editEntry.vendor || ""} onChange={e => setEditEntry({ ...editEntry, vendor: e.target.value })}
+                            placeholder="ספק" className="w-full text-xs border border-gray-200 rounded px-1.5 py-1 outline-none" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input type="number" value={editEntry.amount} onChange={e => setEditEntry({ ...editEntry, amount: Number(e.target.value) })}
+                            className="w-full text-xs border border-gray-200 rounded px-1.5 py-1 outline-none" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <select value={editEntry.is_planned} onChange={e => setEditEntry({ ...editEntry, is_planned: parseInt(e.target.value) })}
+                            className="w-full text-xs border border-gray-200 rounded px-1.5 py-1 outline-none">
+                            <option value="0">בפועל</option>
+                            <option value="1">מתוכנן</option>
+                          </select>
+                        </td>
+                        <td className="px-2 py-1.5 flex gap-1 items-center">
+                          <button onClick={saveBudgetEntry} className="text-xs px-2 py-1 rounded text-white" style={{ background: "#011e41" }}>✓</button>
+                          <button onClick={() => setEditEntry(null)} className="text-xs px-2 py-1 rounded border border-gray-200 text-gray-500">✕</button>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-3 py-2 text-center">
+                          <input
+                            type="checkbox"
+                            checked={entry.is_planned === 0}
+                            onChange={() => toggleBudgetEntryDone(entry.id, entry.is_planned)}
+                            title={entry.is_planned ? "סמן כבוצע (יעבור לבפועל)" : "בוצע"}
+                            className="accent-green-600 cursor-pointer"
+                            disabled={entry.is_planned === 0}
+                          />
+                        </td>
+                        <td className="px-5 py-2 text-gray-600">{entry.category}</td>
+                        <td className="px-5 py-2 font-medium text-gray-800" style={{ textDecoration: entry.is_planned === 0 ? "line-through" : "none" }}>{entry.description}</td>
+                        <td className="px-5 py-2 text-gray-500">{entry.vendor || "—"}</td>
+                        <td className="px-5 py-2 font-medium">{fmt(entry.amount)}</td>
+                        <td className="px-5 py-2">
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${entry.is_planned ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"}`}>
+                            {entry.is_planned ? "מתוכנן" : "בפועל"}
+                          </span>
+                        </td>
+                        <td className="px-2 py-2">
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100">
+                            <button onClick={() => setEditEntry({ ...entry })} className="text-gray-400 hover:text-blue-500 text-xs">✏</button>
+                            <button onClick={() => deleteBudgetEntry(entry.id)} className="text-gray-400 hover:text-red-400 text-xs">✕</button>
+                          </div>
+                        </td>
+                      </>
+                    )}
                   </tr>
-                ))}
+                )})}
                 {budgetEntries.length === 0 && (
                   <tr><td colSpan={6} className="px-5 py-8 text-center text-gray-400 text-sm">אין רשומות תקציב עדיין</td></tr>
                 )}
