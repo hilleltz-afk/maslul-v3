@@ -99,8 +99,12 @@ export default function ProjectPage() {
   const [editingStageName, setEditingStageName] = useState("");
   const [dragStageId, setDragStageId] = useState<string | null>(null);
   const [stageMenu, setStageMenu] = useState<string | null>(null);
+  const [dragTaskListId, setDragTaskListId] = useState<string | null>(null);
+  const [dragOverTaskListId, setDragOverTaskListId] = useState<string | null>(null);
 
   // Budget state
+  const [dragBudgetId, setDragBudgetId] = useState<string | null>(null);
+  const [dragOverBudgetId, setDragOverBudgetId] = useState<string | null>(null);
   const [budgetEntries, setBudgetEntries] = useState<BudgetEntry[]>([]);
   const [budgetSummary, setBudgetSummary] = useState<BudgetSummary[]>([]);
   const [showAddEntry, setShowAddEntry] = useState(false);
@@ -437,6 +441,24 @@ export default function ProjectPage() {
       localStorage.setItem(`stage_order_${projectId}`, JSON.stringify(prev.map(s => s.id)));
       return prev;
     });
+  }
+
+  function handleTaskListDrop(fromId: string, toId: string) {
+    if (fromId === toId) return;
+    setTasks(prev => {
+      const arr = [...prev];
+      const from = arr.findIndex(t => t.id === fromId);
+      const to   = arr.findIndex(t => t.id === toId);
+      if (from === -1 || to === -1) return prev;
+      arr.splice(to, 0, arr.splice(from, 1)[0]);
+      const order = arr.filter(t => t.stage_id === arr[to].stage_id).map(t => t.id);
+      localStorage.setItem(`task_order_${projectId}`, JSON.stringify(
+        { ...(JSON.parse(localStorage.getItem(`task_order_${projectId}`) || "{}")), [arr[to].stage_id]: order }
+      ));
+      return arr;
+    });
+    setDragTaskListId(null);
+    setDragOverTaskListId(null);
   }
 
   async function deleteStage(stageId: string) {
@@ -928,7 +950,14 @@ export default function ProjectPage() {
                       const status = getStatus(task.status);
                       const priority = getPriority(task.priority);
                       return (
-                        <div key={task.id} className="flex items-center border-b border-gray-100 hover:bg-gray-50 group text-sm" style={{ background: selectedTasks.has(task.id) ? "#eff6ff" : undefined, minWidth: "max-content" }}>
+                        <div key={task.id}
+                          draggable
+                          onDragStart={() => setDragTaskListId(task.id)}
+                          onDragOver={e => { e.preventDefault(); setDragOverTaskListId(task.id); }}
+                          onDrop={() => { if (dragTaskListId) handleTaskListDrop(dragTaskListId, task.id); }}
+                          onDragEnd={() => { setDragTaskListId(null); setDragOverTaskListId(null); }}
+                          className="flex items-center border-b border-gray-100 hover:bg-gray-50 group text-sm"
+                          style={{ background: selectedTasks.has(task.id) ? "#eff6ff" : dragOverTaskListId === task.id && dragTaskListId !== task.id ? "#f0f4ff" : undefined, minWidth: "max-content", cursor: "grab" }}>
                           <div style={{ width: 32, minWidth: 32 }} className="flex items-center justify-center">
                             <input
                               type="checkbox"
@@ -1700,7 +1729,24 @@ export default function ProjectPage() {
               </thead>
               <tbody>
                 {budgetEntries.map(entry => (
-                  <tr key={entry.id} className={`border-t border-gray-50 hover:bg-gray-50 group ${!entry.is_planned ? "opacity-60" : ""}`}>
+                  <tr key={entry.id}
+                    draggable
+                    onDragStart={() => setDragBudgetId(entry.id)}
+                    onDragOver={e => { e.preventDefault(); setDragOverBudgetId(entry.id); }}
+                    onDrop={() => {
+                      if (!dragBudgetId || dragBudgetId === entry.id) return;
+                      setBudgetEntries(prev => {
+                        const arr = [...prev];
+                        const from = arr.findIndex(x => x.id === dragBudgetId);
+                        const to   = arr.findIndex(x => x.id === entry.id);
+                        arr.splice(to, 0, arr.splice(from, 1)[0]);
+                        return arr;
+                      });
+                      setDragBudgetId(null); setDragOverBudgetId(null);
+                    }}
+                    onDragEnd={() => { setDragBudgetId(null); setDragOverBudgetId(null); }}
+                    style={{ cursor: "grab", background: dragOverBudgetId === entry.id && dragBudgetId !== entry.id ? "#f0f4ff" : undefined }}
+                    className={`border-t border-gray-50 hover:bg-gray-50 group ${!entry.is_planned ? "opacity-60" : ""}`}>
                     <td className="px-3 py-2 text-center">
                       <input
                         type="checkbox"

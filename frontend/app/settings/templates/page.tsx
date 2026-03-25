@@ -42,6 +42,50 @@ export default function TemplatesPage() {
   const [newTaskRole, setNewTaskRole]         = useState("");
   const [editTask, setEditTask] = useState<{ stageId: string; taskId: string; title: string; priority: string; assignee_role: string } | null>(null);
 
+  // Drag state
+  const [dragStageId, setDragStageId]     = useState<string | null>(null);
+  const [dragOverStageId, setDragOverStageId] = useState<string | null>(null);
+  const [dragTaskId, setDragTaskId]       = useState<{ stageId: string; taskId: string } | null>(null);
+  const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
+
+  function reorderStages(fromId: string, toId: string) {
+    if (!selected || fromId === toId) return;
+    setTemplates(prev => prev.map(t => {
+      if (t.id !== selected) return t;
+      const stages = [...t.stages];
+      const from = stages.findIndex(s => s.id === fromId);
+      const to   = stages.findIndex(s => s.id === toId);
+      if (from === -1 || to === -1) return t;
+      stages.splice(to, 0, stages.splice(from, 1)[0]);
+      stages.forEach((s, i) => { s.order = i; });
+      // persist
+      stages.forEach((s, i) => apiFetch(`/tenants/${TENANT_ID}/templates/${selected}/stages/${s.id}`, {
+        method: "PUT", body: JSON.stringify({ order: i }),
+      }).catch(() => {}));
+      return { ...t, stages };
+    }));
+  }
+
+  function reorderTasks(stageId: string, fromId: string, toId: string) {
+    if (!selected || fromId === toId) return;
+    setTemplates(prev => prev.map(t => {
+      if (t.id !== selected) return t;
+      return { ...t, stages: t.stages.map(s => {
+        if (s.id !== stageId) return s;
+        const tasks = [...s.tasks];
+        const from = tasks.findIndex(x => x.id === fromId);
+        const to   = tasks.findIndex(x => x.id === toId);
+        if (from === -1 || to === -1) return s;
+        tasks.splice(to, 0, tasks.splice(from, 1)[0]);
+        tasks.forEach((x, i) => { x.order = i; });
+        tasks.forEach((x, i) => apiFetch(`/tenants/${TENANT_ID}/templates/${selected}/stages/${stageId}/tasks/${x.id}`, {
+          method: "PUT", body: JSON.stringify({ order: i }),
+        }).catch(() => {}));
+        return { ...s, tasks };
+      })};
+    }));
+  }
+
   async function load() {
     setLoading(true);
     try { setTemplates(await apiFetch(`/tenants/${TENANT_ID}/templates/`)); }
@@ -200,12 +244,21 @@ export default function TemplatesPage() {
               {current.stages.map(stage => {
                 const isCollapsed = !!collapsed[stage.id];
                 return (
-                  <div key={stage.id} style={{ marginBottom: 8 }}>
+                  <div key={stage.id} style={{ marginBottom: 8 }}
+                    draggable
+                    onDragStart={() => setDragStageId(stage.id)}
+                    onDragOver={e => { e.preventDefault(); setDragOverStageId(stage.id); }}
+                    onDrop={() => { if (dragStageId) reorderStages(dragStageId, stage.id); setDragStageId(null); setDragOverStageId(null); }}
+                    onDragEnd={() => { setDragStageId(null); setDragOverStageId(null); }}
+                  >
                     <div style={{
                       display: "flex", alignItems: "center", gap: 8,
-                      background: "#fff", borderRadius: 8, padding: "8px 12px",
-                      border: "1px solid #e2e8f0",
+                      background: dragOverStageId === stage.id && dragStageId !== stage.id ? "#f0f4ff" : "#fff",
+                      borderRadius: 8, padding: "8px 12px",
+                      border: dragOverStageId === stage.id && dragStageId !== stage.id ? "1px solid #3b5bdb" : "1px solid #e2e8f0",
+                      transition: "background 0.1s",
                     }}>
+                      <span style={{ cursor: "grab", color: "#cbd5e1", fontSize: 14, userSelect: "none", paddingLeft: 2 }} title="גרור לסידור מחדש">⠿</span>
                       <span onClick={() => setCollapsed(c => ({ ...c, [stage.id]: !c[stage.id] }))}
                         style={{ cursor: "pointer", color: "#94a3b8", fontSize: 13, userSelect: "none" }}>
                         {isCollapsed ? "▸" : "▾"}
@@ -229,10 +282,18 @@ export default function TemplatesPage() {
                     {!isCollapsed && (
                       <div style={{ marginRight: 24, marginTop: 2 }}>
                         {stage.tasks.map(task => (
-                          <div key={task.id} style={{
+                          <div key={task.id}
+                            draggable
+                            onDragStart={e => { e.stopPropagation(); setDragTaskId({ stageId: stage.id, taskId: task.id }); }}
+                            onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDragOverTaskId(task.id); }}
+                            onDrop={e => { e.stopPropagation(); if (dragTaskId?.stageId === stage.id) reorderTasks(stage.id, dragTaskId.taskId, task.id); setDragTaskId(null); setDragOverTaskId(null); }}
+                            onDragEnd={e => { e.stopPropagation(); setDragTaskId(null); setDragOverTaskId(null); }}
+                            style={{
                             display: "flex", alignItems: "center", gap: 8,
-                            background: "#fff", borderRadius: 6, padding: "7px 12px", marginBottom: 2,
-                            border: "1px solid #f1f5f9",
+                            background: dragOverTaskId === task.id && dragTaskId?.taskId !== task.id ? "#f0f4ff" : "#fff",
+                            borderRadius: 6, padding: "7px 12px", marginBottom: 2,
+                            border: dragOverTaskId === task.id && dragTaskId?.taskId !== task.id ? "1px solid #3b5bdb" : "1px solid #f1f5f9",
+                            cursor: "default", transition: "background 0.1s",
                           }}>
                             {editTask?.taskId === task.id ? (
                               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -262,6 +323,7 @@ export default function TemplatesPage() {
                               </div>
                             ) : (
                               <>
+                                <span style={{ cursor: "grab", color: "#cbd5e1", fontSize: 14, userSelect: "none" }} title="גרור לסידור מחדש">⠿</span>
                                 <span style={{ flex: 1, fontSize: 13, color: "#374151" }}>{task.title}</span>
                                 {task.assignee_role && (
                                   <span style={{ fontSize: 11, borderRadius: 5, padding: "2px 8px", background: "#e8f0fe", color: "#3b5bdb" }}>
