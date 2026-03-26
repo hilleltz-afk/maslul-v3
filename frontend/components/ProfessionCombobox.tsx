@@ -2,6 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { PROFESSIONS } from "@/lib/professions";
+import { getTenantId } from "@/lib/tenant";
+import { apiFetch } from "@/lib/api";
+
+const TENANT_ID = getTenantId();
+let _cachedProfessions: string[] | null = null;
 
 interface Props {
   value: string;
@@ -14,10 +19,22 @@ export default function ProfessionCombobox({ value, onChange, placeholder = "×‘×
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value);
   const [openUpward, setOpenUpward] = useState(false);
+  const [professionList, setProfessionList] = useState<string[]>(_cachedProfessions ?? PROFESSIONS);
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { setQuery(value); }, [value]);
+
+  useEffect(() => {
+    if (_cachedProfessions) return;
+    apiFetch(`/tenants/${TENANT_ID}/professions/`)
+      .then((data: { name: string }[]) => {
+        const names = data.map(d => d.name);
+        _cachedProfessions = names;
+        setProfessionList(names);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -35,8 +52,8 @@ export default function ProfessionCombobox({ value, onChange, placeholder = "×‘×
   }
 
   const filtered = query
-    ? PROFESSIONS.filter(p => p.includes(query))
-    : PROFESSIONS;
+    ? professionList.filter(p => p.includes(query))
+    : professionList;
 
   function select(p: string) {
     onChange(p);

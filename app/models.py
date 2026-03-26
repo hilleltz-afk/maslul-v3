@@ -282,6 +282,17 @@ class ProjectProfessional(Base):
     created_by = Column(GUID(), ForeignKey("users.id"), nullable=True)
 
 
+class Profession(Base):
+    """רשימת מקצועות מנוהלת לפי טנאנט."""
+    __tablename__ = "professions"
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(GUID(), ForeignKey("tenants.id"), nullable=False)
+    name = Column(String, nullable=False)
+    order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True)
+
+
 class ProjectTemplate(Base):
     """טמפלייט לפרויקט — מכיל שלבים ומשימות לשכפול."""
     __tablename__ = "project_templates"

@@ -309,6 +309,15 @@ DDL = [
         deleted_at TIMESTAMP,
         created_by UUID
     )""",
+    # professions
+    """CREATE TABLE IF NOT EXISTS professions (
+        id UUID PRIMARY KEY,
+        tenant_id UUID NOT NULL REFERENCES tenants(id),
+        name VARCHAR NOT NULL,
+        "order" INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP,
+        deleted_at TIMESTAMP
+    )""",
     # project_templates
     """CREATE TABLE IF NOT EXISTS project_templates (
         id UUID PRIMARY KEY,
