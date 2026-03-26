@@ -31,6 +31,7 @@ interface Template {
 
 interface Props {
   projectId: string;
+  existingTaskTitles: string[];
   onClose: () => void;
   onApplied: () => void;
 }
@@ -43,7 +44,7 @@ const PRIORITY_COLORS: Record<string, string> = {
   high: "#e74c3c", medium: "#e67e22", low: "#27ae60", urgent: "#c0392b",
 };
 
-export default function ApplyTemplateModal({ projectId, onClose, onApplied }: Props) {
+export default function ApplyTemplateModal({ projectId, existingTaskTitles, onClose, onApplied }: Props) {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [checkedTasks, setCheckedTasks] = useState<Record<string, boolean>>({});
@@ -63,8 +64,12 @@ export default function ApplyTemplateModal({ projectId, onClose, onApplied }: Pr
     setSelected(id);
     const tmpl = templates.find(t => t.id === id);
     if (!tmpl) return;
+    const existingLower = new Set(existingTaskTitles.map(t => t.trim().toLowerCase()));
     const checked: Record<string, boolean> = {};
-    tmpl.stages.forEach(s => s.tasks.forEach(t => { checked[t.id] = true; }));
+    tmpl.stages.forEach(s => s.tasks.forEach(t => {
+      // Uncheck tasks that already exist in the project by title match
+      checked[t.id] = !existingLower.has(t.title.trim().toLowerCase());
+    }));
     setCheckedTasks(checked);
   }
 

@@ -53,8 +53,8 @@ export default function TemplatesPage() {
       return;
     }
     function handler() { setStageMenu(null); }
-    document.addEventListener("click", handler);
-    return () => document.removeEventListener("click", handler);
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
   }, [stageMenu]);
 
   async function saveEditedStage(stageId: string) {

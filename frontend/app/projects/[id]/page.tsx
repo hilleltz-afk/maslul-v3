@@ -530,6 +530,13 @@ export default function ProjectPage() {
     else if (newTaskForm.start_date && newTaskForm.end_date <= newTaskForm.start_date) errors.end_date = "תאריך סיום חייב להיות אחרי תאריך ההתחלה";
     if (Object.keys(errors).length > 0) { setNewTaskErrors(errors); return; }
     setNewTaskErrors({});
+    // Duplicate check
+    const titleLower = newTaskForm.title.trim().toLowerCase();
+    const duplicate = tasks.find(t => t.title.trim().toLowerCase() === titleLower);
+    if (duplicate) {
+      const ok = confirm(`משימה בשם "${newTaskForm.title.trim()}" כבר קיימת בפרויקט. להוסיף בכל זאת?`);
+      if (!ok) return;
+    }
     try {
       const task = await apiFetch(`/tenants/${TENANT_ID}/tasks/`, {
         method: "POST",
@@ -728,6 +735,7 @@ export default function ProjectPage() {
       {showApplyTemplate && (
         <ApplyTemplateModal
           projectId={projectId}
+          existingTaskTitles={tasks.map(t => t.title)}
           onClose={() => setShowApplyTemplate(false)}
           onApplied={() => { router.refresh(); window.location.reload(); }}
         />
