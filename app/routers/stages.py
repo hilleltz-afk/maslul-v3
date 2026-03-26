@@ -80,6 +80,13 @@ def delete_stage(
     changed_by: str | None = Depends(get_current_user_id),
 ):
     stage = _get_stage_or_404(db, tenant_id, stage_id)
+    # Also soft-delete all tasks in this stage
+    tasks = db.query(models.Task).filter(
+        models.Task.stage_id == stage_id,
+        models.Task.deleted_at.is_(None),
+    ).all()
+    for task in tasks:
+        crud.soft_delete_entity(db, task, changed_by=changed_by)
     crud.soft_delete_entity(db, stage, changed_by=changed_by)
     db.commit()
     return None

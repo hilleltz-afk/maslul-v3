@@ -245,12 +245,7 @@ export default function ProjectPage() {
     } finally { setTaskDocsUploading(false); }
   }
 
-  useEffect(() => {
-    if (!stageMenu) return;
-    const close = () => setStageMenu(null);
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
-  }, [stageMenu]);
+  // stageMenu closes via backdrop (see JSX) — no document listener needed
 
   useEffect(() => {
     if (selectedTaskId) loadComments(selectedTaskId);
@@ -463,9 +458,14 @@ export default function ProjectPage() {
   }
 
   async function deleteStage(stageId: string) {
-    if (!confirm("למחוק קבוצת משימות זו? המשימות בה לא יימחקו.")) return;
+    const stageTaskCount = tasks.filter(t => t.stage_id === stageId).length;
+    const msg = stageTaskCount > 0
+      ? `למחוק קבוצת משימות זו ואת ${stageTaskCount} המשימות בה?`
+      : "למחוק קבוצת משימות זו?";
+    if (!confirm(msg)) return;
     await apiFetch(`/tenants/${TENANT_ID}/stages/${stageId}`, { method: "DELETE" });
     setStages(prev => prev.filter(s => s.id !== stageId));
+    setTasks(prev => prev.filter(t => t.stage_id !== stageId));
   }
 
   async function loadProjectMembers() {
@@ -965,9 +965,12 @@ export default function ProjectPage() {
                       className="opacity-0 group-hover/stage:opacity-100 text-gray-400 hover:text-gray-600 px-1 text-base leading-none"
                     >⋮</button>
                     {stageMenu === stage.id && (
+                      <>
+                        {/* Backdrop — closes menu on outside click */}
+                        <div style={{ position: "fixed", inset: 0, zIndex: 9998 }} onMouseDown={() => setStageMenu(null)} />
                       <div
-                        className="absolute right-0 top-6 bg-white shadow-xl rounded-lg border border-gray-200 z-50 py-1 min-w-40"
-                        onClick={e => e.stopPropagation()}
+                        className="absolute right-0 top-6 bg-white shadow-xl rounded-lg border border-gray-200 py-1 min-w-40"
+                        style={{ zIndex: 9999 }}
                       >
                         <button
                           onClick={() => { setEditingStageId(stage.id); setEditingStageName(stage.name); setStageMenu(null); }}
@@ -988,6 +991,7 @@ export default function ProjectPage() {
                           className="w-full text-right px-4 py-2 text-sm text-red-500 hover:bg-red-50"
                         >🗑️ מחיקת קבוצה</button>
                       </div>
+                      </>
                     )}
                   </div>
 

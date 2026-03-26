@@ -47,14 +47,9 @@ export default function TemplatesPage() {
   const [editingStageId, setEditingStageId]     = useState<string | null>(null);
   const [editingStageName, setEditingStageName] = useState("");
 
+  // When menu closes, clear editing state
   useEffect(() => {
-    if (!stageMenu) {
-      setEditingStageId(null);
-      return;
-    }
-    function handler() { setStageMenu(null); }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    if (!stageMenu) setEditingStageId(null);
   }, [stageMenu]);
 
   async function saveEditedStage(stageId: string) {
@@ -322,17 +317,19 @@ export default function TemplatesPage() {
                         + משימה
                       </button>
                       {/* ⋮ menu */}
-                      <div style={{ position: "relative" }} onMouseDown={e => e.stopPropagation()}>
+                      <div style={{ position: "relative" }}>
                         <button
                           onClick={e => { e.stopPropagation(); setStageMenu(stageMenu === stage.id ? null : stage.id); }}
                           style={{ background: "transparent", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: 18, padding: "2px 6px", lineHeight: 1 }}>⋮</button>
                         {stageMenu === stage.id && (
+                          <>
+                            {/* Backdrop — closes menu on outside click */}
+                            <div style={{ position: "fixed", inset: 0, zIndex: 9998 }} onMouseDown={() => setStageMenu(null)} />
                           <div style={{
                             position: "absolute", top: "100%", left: 0, background: "#fff",
                             border: "1px solid #e2e8f0", borderRadius: 8, zIndex: 9999,
                             boxShadow: "0 4px 16px rgba(0,0,0,0.15)", minWidth: 160, direction: "rtl",
                           }}
-                            onClick={e => e.stopPropagation()}
                           >
                             {editingStageId === stage.id ? (
                               <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
@@ -375,6 +372,7 @@ export default function TemplatesPage() {
                               🗑️ מחיקה
                             </button>
                           </div>
+                          </>
                         )}
                       </div>
                     </div>
