@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { getTenantId } from "@/lib/tenant";
-import { apiFetch, apiUpload } from "@/lib/api";
+import { apiFetch, apiUpload, API_BASE } from "@/lib/api";
 import ApplyTemplateModal from "@/components/ApplyTemplateModal";
 import ProfessionCombobox from "@/components/ProfessionCombobox";
 
@@ -619,7 +619,6 @@ export default function ProjectPage() {
 
   async function downloadExport() {
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-    const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     try {
       const res = await fetch(`${API_BASE}/tenants/${TENANT_ID}/projects/${projectId}/export`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
