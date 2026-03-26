@@ -2,6 +2,7 @@
 יצוא נתונים ל-Excel — משימות ותקציב לפי פרויקט.
 """
 import io
+from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -150,9 +151,10 @@ def export_project(tenant_id: UUID, project_id: UUID, db: Session = Depends(get_
                 _fmt_dt(q.created_at),
             ])
 
-    # שם הקובץ
+    # שם הקובץ — RFC 5987 encoding לתמיכה בעברית
     proj_name = (project.name if project else "project").replace(" ", "_")
     filename = f"maslul_{proj_name}.xlsx"
+    filename_encoded = quote(filename, safe="")
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -161,7 +163,7 @@ def export_project(tenant_id: UUID, project_id: UUID, db: Session = Depends(get_
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": f"attachment; filename=\"maslul_project.xlsx\"; filename*=UTF-8''{filename_encoded}"},
     )
 
 
