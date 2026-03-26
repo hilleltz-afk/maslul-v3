@@ -3,6 +3,7 @@ import os
 import zipfile
 from datetime import datetime, timezone
 from typing import Optional
+from urllib.parse import quote
 from uuid import UUID
 
 import httpx
@@ -162,10 +163,11 @@ def export_project(
     zip_buf.seek(0)
 
     filename = f"{project_name_safe}.zip"
+    filename_encoded = quote(filename, safe="")
     return StreamingResponse(
         zip_buf,
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": f"attachment; filename=\"project.zip\"; filename*=UTF-8''{filename_encoded}"},
     )
 
 
