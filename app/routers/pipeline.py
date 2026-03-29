@@ -113,24 +113,27 @@ def ingest_email(
             profession = f" ({contact.profession})" if contact.profession else ""
             contact_context = f"שולח מזוהה באנשי הקשר: {contact.name}{profession}"
 
-        # שליפת היסטוריית שיוכים שאושרו — ל-few-shot learning
-        past_approvals = (
-            db.query(models.EmailPipelineItem, models.Project)
-            .join(models.Project, models.EmailPipelineItem.approved_project_id == models.Project.id, isouter=True)
-            .filter(
-                models.EmailPipelineItem.tenant_id == str(tenant_id),
-                models.EmailPipelineItem.status == models.EmailPipelineStatus.APPROVED,
-                models.EmailPipelineItem.approved_project_id.isnot(None),
+        # שליפת היסטוריית שיוכים שאושרו — ל-few-shot learning (אופציונלי)
+        try:
+            past_approvals = (
+                db.query(models.EmailPipelineItem, models.Project)
+                .join(models.Project, models.EmailPipelineItem.approved_project_id == models.Project.id, isouter=True)
+                .filter(
+                    models.EmailPipelineItem.tenant_id == str(tenant_id),
+                    models.EmailPipelineItem.status == models.EmailPipelineStatus.APPROVED,
+                    models.EmailPipelineItem.approved_project_id.isnot(None),
+                )
+                .order_by(models.EmailPipelineItem.reviewed_at.desc())
+                .limit(15)
+                .all()
             )
-            .order_by(models.EmailPipelineItem.reviewed_at.desc())
-            .limit(15)
-            .all()
-        )
-        past_corrections = [
-            {"sender": item.sender, "subject": item.subject, "project_name": proj.name}
-            for item, proj in past_approvals
-            if proj
-        ]
+            past_corrections = [
+                {"sender": ep_item.sender, "subject": ep_item.subject, "project_name": proj.name}
+                for ep_item, proj in past_approvals
+                if proj
+            ]
+        except Exception:
+            past_corrections = []
 
         analysis = ai_service.analyse_email(
             req.sender, req.subject, req.body,

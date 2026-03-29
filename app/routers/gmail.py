@@ -237,23 +237,26 @@ def fetch_gmail(
                         {"id": str(p.id), "name": p.name, "gush": p.gush or "", "helka": p.helka or "", "address": p.address or ""}
                         for p in projects
                     ]
-                    past_approvals = (
-                        db.query(models.EmailPipelineItem, models.Project)
-                        .join(models.Project, models.EmailPipelineItem.approved_project_id == models.Project.id, isouter=True)
-                        .filter(
-                            models.EmailPipelineItem.tenant_id == str(tenant_id),
-                            models.EmailPipelineItem.created_by == str(user.id),
-                            models.EmailPipelineItem.status == models.EmailPipelineStatus.APPROVED,
-                            models.EmailPipelineItem.approved_project_id.isnot(None),
+                    try:
+                        past_approvals = (
+                            db.query(models.EmailPipelineItem, models.Project)
+                            .join(models.Project, models.EmailPipelineItem.approved_project_id == models.Project.id, isouter=True)
+                            .filter(
+                                models.EmailPipelineItem.tenant_id == str(tenant_id),
+                                models.EmailPipelineItem.created_by == str(user.id),
+                                models.EmailPipelineItem.status == models.EmailPipelineStatus.APPROVED,
+                                models.EmailPipelineItem.approved_project_id.isnot(None),
+                            )
+                            .order_by(models.EmailPipelineItem.reviewed_at.desc())
+                            .limit(15)
+                            .all()
                         )
-                        .order_by(models.EmailPipelineItem.reviewed_at.desc())
-                        .limit(15)
-                        .all()
-                    )
-                    past_corrections = [
-                        {"sender": ep_item.sender, "subject": ep_item.subject, "project_name": proj.name}
-                        for ep_item, proj in past_approvals if proj
-                    ]
+                        past_corrections = [
+                            {"sender": ep_item.sender, "subject": ep_item.subject, "project_name": proj.name}
+                            for ep_item, proj in past_approvals if proj
+                        ]
+                    except Exception:
+                        past_corrections = []
                     analysis = ai_service.analyse_email(sender, subject, body, projects_data, past_corrections=past_corrections)
 
                     matched_project_id = None
