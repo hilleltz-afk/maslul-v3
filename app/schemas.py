@@ -279,7 +279,9 @@ class EmailPipelineItemRead(BaseModel):
     has_attachments: Optional[int] = None
     budget_mentioned: Optional[float] = None
     analysis_notes: Optional[str] = None
+    full_body: Optional[str] = None
     status: str
+    approved_project_id: Optional[UUID] = None
     created_task_id: Optional[UUID] = None
     created_at: datetime
 

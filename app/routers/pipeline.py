@@ -114,10 +114,30 @@ def ingest_email(
             profession = f" ({contact.profession})" if contact.profession else ""
             contact_context = f"שולח מזוהה באנשי הקשר: {contact.name}{profession}"
 
+        # שליפת היסטוריית שיוכים שאושרו — ל-few-shot learning
+        past_approvals = (
+            db.query(models.EmailPipelineItem, models.Project)
+            .join(models.Project, models.EmailPipelineItem.approved_project_id == models.Project.id, isouter=True)
+            .filter(
+                models.EmailPipelineItem.tenant_id == str(tenant_id),
+                models.EmailPipelineItem.status == models.EmailPipelineStatus.APPROVED,
+                models.EmailPipelineItem.approved_project_id.isnot(None),
+            )
+            .order_by(models.EmailPipelineItem.reviewed_at.desc())
+            .limit(15)
+            .all()
+        )
+        past_corrections = [
+            {"sender": item.sender, "subject": item.subject, "project_name": proj.name}
+            for item, proj in past_approvals
+            if proj
+        ]
+
         analysis = ai_service.analyse_email(
             req.sender, req.subject, req.body,
             projects=projects_data,
             contact_context=contact_context,
+            past_corrections=past_corrections,
         )
 
         # Fuzzy match: מצא project_id לפי שם שהוחזר מה-AI
@@ -223,6 +243,7 @@ def approve_email(
 
     # עדכון הפריט
     item.status = models.EmailPipelineStatus.APPROVED
+    item.approved_project_id = str(req.project_id)
     item.created_task_id = task.id
     item.reviewed_by = user_id
     item.reviewed_at = datetime.now(timezone.utc)

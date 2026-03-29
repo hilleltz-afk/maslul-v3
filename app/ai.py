@@ -235,7 +235,8 @@ _EMAIL_ANALYSIS_SYSTEM = """
 אתה עוזר ניהול פרויקטים לחברת נדל"ן ישראלית בשם Hadas Capital.
 קרא את המייל המלא וזהה את הפרטים הבאים:
 
-1. לאיזה פרויקט הוא שייך — השווה לרשימת הפרויקטים שסופקה. חפש שמות, מספרי גוש/חלקה, כתובות.
+1. לאיזה פרויקט הוא שייך — השווה לרשימת הפרויקטים שסופקה. חפש שמות, מספרי גוש/חלקה, כתובות, שמות שולחים.
+   אם יש היסטוריית שיוכים קודמים — השתמש בה כרמז חזק.
 2. מהי המשימה הנדרשת — נסח בעברית, ברורה ותמציתית.
 3. רמת עדיפות — urgent אם יש דדליין קרוב / דחיפות מפורשת, high אם דורש פעולה מהירה, medium ברירת מחדל.
 4. תאריך יעד — אם מוזכר תאריך ספציפי בטקסט.
@@ -287,6 +288,7 @@ def analyse_email(
     full_body: str,
     projects: list[dict],         # [{"id": ..., "name": ..., "gush": ..., "helka": ..., "address": ...}]
     contact_context: str = "",    # e.g. "שולח מזוהה: דוד לוי (עו\"ד)"
+    past_corrections: list[dict] = [],  # [{"sender": ..., "subject": ..., "project_name": ...}]
 ) -> EmailAnalysisResult:
     """
     Step 2 — Claude Sonnet: ניתוח מעמיק של המייל + התאמה לפרויקטים.
@@ -307,10 +309,19 @@ def analyse_email(
     else:
         projects_str = "אין פרויקטים"
 
+    # בניית היסטוריית שיוכים קודמים כ-few-shot
+    history_str = ""
+    if past_corrections:
+        lines = []
+        for c in past_corrections[:10]:  # מקסימום 10 דוגמאות
+            lines.append(f"• שולח: {c['sender']} | נושא: {c['subject'][:60]} → פרויקט: {c['project_name']}")
+        history_str = "\nשיוכים קודמים שאושרו על ידי המשתמש (השתמש כרמז):\n" + "\n".join(lines) + "\n"
+
     contact_line = f"\n{contact_context}" if contact_context else ""
     user_content = (
         f"שולח: {sender}{contact_line}\n"
-        f"נושא: {subject}\n\n"
+        f"נושא: {subject}\n"
+        f"{history_str}\n"
         f"פרויקטים קיימים במערכת:\n{projects_str}\n\n"
         f"תוכן המייל:\n{full_body}"
     )

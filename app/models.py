@@ -374,6 +374,7 @@ class EmailPipelineItem(Base):
 
     # Step 3/4 — HITL ויצירת משימה
     status = Column(Enum(EmailPipelineStatus), nullable=False, default=EmailPipelineStatus.PENDING)
+    approved_project_id = Column(GUID(), ForeignKey("projects.id"), nullable=True)  # מה בחר המשתמש בפועל
     created_task_id = Column(GUID(), ForeignKey("tasks.id"), nullable=True)
     reviewed_by = Column(GUID(), ForeignKey("users.id"), nullable=True)
     reviewed_at = Column(DateTime, nullable=True)
