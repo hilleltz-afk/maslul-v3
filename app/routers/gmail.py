@@ -173,9 +173,10 @@ def fetch_gmail(
     for msg_ref in messages:
         msg_id = msg_ref["id"]
 
-        # בדיקה אם כבר קיים ב-pipeline
+        # בדיקה אם כבר קיים ב-pipeline של המשתמש הנוכחי
         exists = db.query(models.EmailPipelineItem).filter(
             models.EmailPipelineItem.gmail_message_id == msg_id,
+            models.EmailPipelineItem.created_by == str(user.id),
         ).first()
         if exists:
             skipped += 1
@@ -232,8 +233,28 @@ def fetch_gmail(
                         models.Project.tenant_id == str(tenant_id),
                         models.Project.deleted_at.is_(None),
                     ).all()
-                    project_names = [p.name for p in projects]
-                    analysis = ai_service.analyse_email(sender, subject, body, project_names)
+                    projects_data = [
+                        {"id": str(p.id), "name": p.name, "gush": p.gush or "", "helka": p.helka or "", "address": p.address or ""}
+                        for p in projects
+                    ]
+                    past_approvals = (
+                        db.query(models.EmailPipelineItem, models.Project)
+                        .join(models.Project, models.EmailPipelineItem.approved_project_id == models.Project.id, isouter=True)
+                        .filter(
+                            models.EmailPipelineItem.tenant_id == str(tenant_id),
+                            models.EmailPipelineItem.created_by == str(user.id),
+                            models.EmailPipelineItem.status == models.EmailPipelineStatus.APPROVED,
+                            models.EmailPipelineItem.approved_project_id.isnot(None),
+                        )
+                        .order_by(models.EmailPipelineItem.reviewed_at.desc())
+                        .limit(15)
+                        .all()
+                    )
+                    past_corrections = [
+                        {"sender": ep_item.sender, "subject": ep_item.subject, "project_name": proj.name}
+                        for ep_item, proj in past_approvals if proj
+                    ]
+                    analysis = ai_service.analyse_email(sender, subject, body, projects_data, past_corrections=past_corrections)
 
                     matched_project_id = None
                     if analysis.project_name_guess and projects:

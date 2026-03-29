@@ -21,16 +21,15 @@ router = APIRouter(prefix="/tenants/{tenant_id}/pipeline", tags=["pipeline"])
 _BODY_PREVIEW_WORDS = 100
 
 
-def _get_item_or_404(db: Session, tenant_id: UUID, item_id: UUID) -> models.EmailPipelineItem:
-    item = (
-        db.query(models.EmailPipelineItem)
-        .filter(
-            models.EmailPipelineItem.id == item_id,
-            models.EmailPipelineItem.tenant_id == tenant_id,
-            models.EmailPipelineItem.deleted_at.is_(None),
-        )
-        .first()
+def _get_item_or_404(db: Session, tenant_id: UUID, item_id: UUID, user_id: str | None = None) -> models.EmailPipelineItem:
+    q = db.query(models.EmailPipelineItem).filter(
+        models.EmailPipelineItem.id == item_id,
+        models.EmailPipelineItem.tenant_id == tenant_id,
+        models.EmailPipelineItem.deleted_at.is_(None),
     )
+    if user_id:
+        q = q.filter(models.EmailPipelineItem.created_by == user_id)
+    item = q.first()
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="פריט צינור לא נמצא")
     return item
@@ -185,18 +184,20 @@ def ingest_email(
 
 
 @router.get("/pending", response_model=list[schemas.EmailPipelineItemRead])
-def list_pending(tenant_id: UUID, db: Session = Depends(get_db)):
-    """Step 3 — HITL: רשימת מיילים שממתינים לאישור אנושי."""
-    return (
-        db.query(models.EmailPipelineItem)
-        .filter(
-            models.EmailPipelineItem.tenant_id == str(tenant_id),
-            models.EmailPipelineItem.status == models.EmailPipelineStatus.PENDING,
-            models.EmailPipelineItem.deleted_at.is_(None),
-        )
-        .order_by(models.EmailPipelineItem.created_at.desc())
-        .all()
+def list_pending(
+    tenant_id: UUID,
+    db: Session = Depends(get_db),
+    user_id: str | None = Depends(get_current_user_id),
+):
+    """Step 3 — HITL: רשימת מיילים שממתינים לאישור — פרטי לכל משתמש."""
+    q = db.query(models.EmailPipelineItem).filter(
+        models.EmailPipelineItem.tenant_id == str(tenant_id),
+        models.EmailPipelineItem.status == models.EmailPipelineStatus.PENDING,
+        models.EmailPipelineItem.deleted_at.is_(None),
     )
+    if user_id:
+        q = q.filter(models.EmailPipelineItem.created_by == user_id)
+    return q.order_by(models.EmailPipelineItem.created_at.desc()).all()
 
 
 @router.post("/{item_id}/approve", response_model=schemas.EmailPipelineItemRead)
@@ -210,7 +211,7 @@ def approve_email(
     """
     Step 4 — אישור: יצירת משימה ועדכון סטטוס הפריט.
     """
-    item = _get_item_or_404(db, tenant_id, item_id)
+    item = _get_item_or_404(db, tenant_id, item_id, user_id)
     if item.status != models.EmailPipelineStatus.PENDING:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -260,7 +261,7 @@ def dismiss_email(
     user_id: str | None = Depends(get_current_user_id),
 ):
     """Step 3 — דחיית מייל ללא יצירת משימה."""
-    item = _get_item_or_404(db, tenant_id, item_id)
+    item = _get_item_or_404(db, tenant_id, item_id, user_id)
     if item.status != models.EmailPipelineStatus.PENDING:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
