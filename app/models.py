@@ -237,17 +237,21 @@ class Quote(Base):
 
 
 class PaymentMilestone(Base):
-    """אבן דרך לתשלום — מקושרת להצעת מחיר ולפרויקט."""
+    """אבן דרך לתשלום — מקושרת להצעת מחיר, לפרויקט ולמשימה."""
     __tablename__ = "payment_milestones"
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(GUID(), ForeignKey("tenants.id"), nullable=False)
     quote_id = Column(GUID(), ForeignKey("quotes.id"), nullable=False)
     project_id = Column(GUID(), ForeignKey("projects.id"), nullable=True)
+    task_id = Column(GUID(), ForeignKey("tasks.id"), nullable=True)      # קישור למשימה
     description = Column(String, nullable=False)
+    percentage = Column(Float, nullable=True)                             # אחוז מהסכום הכולל
     amount = Column(Float, nullable=False)
-    due_date = Column(DateTime, nullable=True)
+    order = Column(Integer, nullable=False, default=0)
+    due_date = Column(DateTime, nullable=True)                            # תאריך ידני (אם אין משימה)
     paid_at = Column(DateTime, nullable=True)
-    is_paid = Column(Integer, default=0)
+    paid_amount = Column(Float, nullable=True)                            # סכום ששולם בפועל (חלקי/מלא)
+    is_paid = Column(Integer, default=0)                                  # 0=טרם שולם, 1=שולם (חלקית/מלא)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at = Column(DateTime, nullable=True)

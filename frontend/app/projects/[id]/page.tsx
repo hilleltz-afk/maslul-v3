@@ -35,7 +35,7 @@ interface Project { id: string; name: string; gush: string; helka: string; budge
 interface BudgetEntry { id: string; category: string; description: string; vendor?: string; amount: number; entry_date?: string; is_planned: number; notes?: string; }
 interface BudgetSummary { category: string; planned: number; actual: number; diff: number; }
 interface Comment { id: string; content: string; created_at: string; created_by?: string; }
-interface Milestone { id: string; quote_id: string; description: string; amount: number; due_date?: string; is_paid: number; }
+interface Milestone { id: string; quote_id: string; description: string; amount: number; percentage?: number; order: number; task_id?: string; due_date?: string; is_paid: number; paid_amount?: number; }
 interface Quote { id: string; project_id?: string; vendor?: string; title: string; total_amount?: number; pdf_filename?: string; status: string; notes?: string; created_at: string; milestones: Milestone[]; }
 
 const DEFAULT_WIDTHS: Record<string, number> = { title: 300, assignee: 130, contact: 160, status: 140, priority: 110, start_date: 120, end_date: 120, notes: 200 };
@@ -117,6 +117,9 @@ export default function ProjectPage() {
   const [addingMilestoneToQuote, setAddingMilestoneToQuote] = useState<string | null>(null);
   const [newMilestone, setNewMilestone] = useState({ description: "", amount: "", due_date: "" });
   const [editingMilestone, setEditingMilestone] = useState<{ id: string; field: "description" | "amount"; value: string } | null>(null);
+  const [payingMsId, setPayingMsId] = useState<string | null>(null);
+  const [payingMsAmount, setPayingMsAmount] = useState<string>("");
+  const [savingMsTaskLink, setSavingMsTaskLink] = useState<string | null>(null);
   // Project members
   const [projectMembers, setProjectMembers] = useState<{id:string;user_id:string;role:string;user_name?:string;user_email?:string}[]>([]);
   const [addingMember, setAddingMember] = useState(false);
@@ -314,18 +317,48 @@ export default function ProjectPage() {
     }
   }
 
-  async function toggleMilestonePaid(quote: Quote, ms: Milestone) {
-    const newPaid = ms.is_paid === 1 ? 0 : 1;
+  async function markMilestonePaid(quote: Quote, ms: Milestone, amount: number) {
     await apiFetch(`/tenants/${TENANT_ID}/quotes/${quote.id}/milestones/${ms.id}`, {
       method: "PUT",
-      body: JSON.stringify({ is_paid: newPaid }),
+      body: JSON.stringify({ is_paid: 1, paid_amount: amount }),
     });
     setProjectQuotes(prev => prev.map(q =>
       q.id === quote.id
-        ? { ...q, milestones: q.milestones.map(m => m.id === ms.id ? { ...m, is_paid: newPaid } : m) }
+        ? { ...q, milestones: q.milestones.map(m => m.id === ms.id ? { ...m, is_paid: 1, paid_amount: amount } : m) }
         : q
     ));
-    if (newPaid === 1) await loadBudget();
+    setPayingMsId(null);
+    setPayingMsAmount("");
+    await loadBudget();
+  }
+
+  async function unmarkMilestonePaid(quote: Quote, ms: Milestone) {
+    await apiFetch(`/tenants/${TENANT_ID}/quotes/${quote.id}/milestones/${ms.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ is_paid: 0, paid_amount: null }),
+    });
+    setProjectQuotes(prev => prev.map(q =>
+      q.id === quote.id
+        ? { ...q, milestones: q.milestones.map(m => m.id === ms.id ? { ...m, is_paid: 0, paid_amount: undefined } : m) }
+        : q
+    ));
+  }
+
+  async function linkMilestoneTaskProj(quote: Quote, ms: Milestone, taskId: string) {
+    setSavingMsTaskLink(ms.id);
+    try {
+      await apiFetch(`/tenants/${TENANT_ID}/quotes/${quote.id}/milestones/${ms.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ task_id: taskId || null }),
+      });
+      setProjectQuotes(prev => prev.map(q =>
+        q.id === quote.id
+          ? { ...q, milestones: q.milestones.map(m => m.id === ms.id ? { ...m, task_id: taskId || undefined } : m) }
+          : q
+      ));
+    } finally {
+      setSavingMsTaskLink(null);
+    }
   }
 
   async function saveMilestoneDueDate(quote: Quote, ms: Milestone, date: string) {
@@ -1986,8 +2019,17 @@ export default function ProjectPage() {
               <div className="divide-y divide-gray-50">
                 {projectQuotes.map(q => {
                   const isExpanded = expandedQuoteId === q.id;
-                  const paid = q.milestones.filter(m => m.is_paid).reduce((s, m) => s + m.amount, 0);
+                  const paid = q.milestones.filter(m => m.is_paid).reduce((s, m) => s + (m.paid_amount ?? m.amount), 0);
                   const unpaid = q.milestones.filter(m => !m.is_paid).reduce((s, m) => s + m.amount, 0);
+                  // Build stage→task groups for this project
+                  const tasksByStage: Record<string, { stageName: string; tasks: Task[] }> = {};
+                  for (const t of tasks) {
+                    const stage = stages.find(s => s.id === t.stage_id);
+                    if (!tasksByStage[t.stage_id]) tasksByStage[t.stage_id] = { stageName: stage?.name || "קבוצה", tasks: [] };
+                    tasksByStage[t.stage_id].tasks.push(t);
+                  }
+                  const taskMap: Record<string, Task> = {};
+                  for (const t of tasks) taskMap[t.id] = t;
                   const statusColors: Record<string, string> = { pending_review: "#e67e22", approved: "#27ae60", rejected: "#c0392b" };
                   const statusLabels: Record<string, string> = { pending_review: "ממתין לאישור", approved: "מאושר", rejected: "נדחה" };
                   return (
@@ -2022,77 +2064,154 @@ export default function ProjectPage() {
                         </div>
                       </div>
                       {isExpanded && (
-                        <div className="px-5 pb-4 space-y-1.5">
-                          {q.milestones.map(ms => {
+                        <div className="px-5 pb-4 space-y-2">
+                          {[...q.milestones].sort((a, b) => a.order - b.order).map(ms => {
                             const isOverdue = !ms.is_paid && ms.due_date && new Date(ms.due_date) < new Date();
                             const editingDesc = editingMilestone?.id === ms.id && editingMilestone.field === "description";
                             const editingAmt = editingMilestone?.id === ms.id && editingMilestone.field === "amount";
+                            const isPaying = payingMsId === ms.id;
+                            const linkedTask = ms.task_id ? taskMap[ms.task_id] : null;
                             return (
-                              <div key={ms.id} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm group/ms"
-                                style={{ background: ms.is_paid ? "#f0fdf4" : isOverdue ? "#fef3f2" : "#fafafa" }}>
-                                <input
-                                  type="checkbox"
-                                  checked={ms.is_paid === 1}
-                                  onChange={() => toggleMilestonePaid(q, ms)}
-                                  className="accent-green-600 flex-shrink-0"
-                                />
-                                {editingDesc ? (
-                                  <input
-                                    autoFocus
-                                    className="flex-1 min-w-0 text-sm border border-blue-300 rounded px-2 py-0.5 outline-none"
-                                    value={editingMilestone.value}
-                                    onChange={e => setEditingMilestone(p => p ? { ...p, value: e.target.value } : p)}
-                                    onBlur={() => saveMilestoneField(q.id, ms.id, "description", editingMilestone.value)}
-                                    onKeyDown={e => {
-                                      if (e.key === "Enter") saveMilestoneField(q.id, ms.id, "description", editingMilestone.value);
-                                      if (e.key === "Escape") setEditingMilestone(null);
-                                    }}
-                                  />
-                                ) : (
-                                  <span
-                                    className="flex-1 min-w-0 cursor-pointer hover:underline"
-                                    title="לחץ לעריכה"
-                                    onClick={() => setEditingMilestone({ id: ms.id, field: "description", value: ms.description })}
-                                    style={{ textDecoration: ms.is_paid ? "line-through" : "none", color: ms.is_paid ? "#aaa" : isOverdue ? "#c0392b" : "#333" }}>
-                                    {ms.description}
-                                  </span>
+                              <div key={ms.id} className="rounded-lg border text-sm group/ms"
+                                style={{
+                                  borderColor: ms.is_paid ? "#d1fae5" : isOverdue ? "#fecaca" : "#f0f0f0",
+                                  background: ms.is_paid ? "#f0fdf4" : isOverdue ? "#fef3f2" : "#fafafa",
+                                }}>
+                                {/* Main row */}
+                                <div className="flex items-start gap-2 px-3 py-2.5">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      {ms.is_paid === 1 && (
+                                        <span className="text-xs px-1.5 py-0.5 rounded-full font-medium" style={{ background: "#d1fae5", color: "#16a34a" }}>שולם</span>
+                                      )}
+                                      {editingDesc ? (
+                                        <input
+                                          autoFocus
+                                          className="flex-1 text-sm border border-blue-300 rounded px-2 py-0.5 outline-none"
+                                          value={editingMilestone.value}
+                                          onChange={e => setEditingMilestone(p => p ? { ...p, value: e.target.value } : p)}
+                                          onBlur={() => saveMilestoneField(q.id, ms.id, "description", editingMilestone.value)}
+                                          onKeyDown={e => {
+                                            if (e.key === "Enter") saveMilestoneField(q.id, ms.id, "description", editingMilestone.value);
+                                            if (e.key === "Escape") setEditingMilestone(null);
+                                          }}
+                                        />
+                                      ) : (
+                                        <span
+                                          className="cursor-pointer hover:underline"
+                                          onClick={() => setEditingMilestone({ id: ms.id, field: "description", value: ms.description })}
+                                          style={{ textDecoration: ms.is_paid ? "line-through" : "none", color: ms.is_paid ? "#aaa" : isOverdue ? "#c0392b" : "#333" }}>
+                                          {ms.description}
+                                        </span>
+                                      )}
+                                      {ms.percentage != null && <span className="text-xs text-gray-400">({ms.percentage}%)</span>}
+                                    </div>
+                                    {/* Task link row */}
+                                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                      <span className="text-xs text-gray-400">משימה:</span>
+                                      <select
+                                        value={ms.task_id || ""}
+                                        disabled={savingMsTaskLink === ms.id}
+                                        onChange={e => linkMilestoneTaskProj(q, ms, e.target.value)}
+                                        className="text-xs border border-gray-200 rounded px-2 py-0.5 bg-white max-w-xs"
+                                        style={{ opacity: savingMsTaskLink === ms.id ? 0.5 : 1 }}
+                                      >
+                                        <option value="">ללא קישור</option>
+                                        {Object.values(tasksByStage).map(({ stageName, tasks: stageTasks }) => (
+                                          <optgroup key={stageName} label={stageName}>
+                                            {stageTasks.map(t => (
+                                              <option key={t.id} value={t.id}>{t.title}</option>
+                                            ))}
+                                          </optgroup>
+                                        ))}
+                                      </select>
+                                      {/* Date: task end_date if linked, else editable due_date */}
+                                      {linkedTask?.end_date ? (
+                                        <span className="text-xs text-blue-400">יעד: {new Date(linkedTask.end_date).toLocaleDateString("he-IL")}</span>
+                                      ) : (
+                                        <input
+                                          type="date"
+                                          value={ms.due_date ? ms.due_date.slice(0, 10) : ""}
+                                          onChange={e => saveMilestoneDueDate(q, ms, e.target.value)}
+                                          className="text-xs border border-gray-200 rounded px-1 py-0.5 outline-none w-32"
+                                          style={{ color: isOverdue ? "#c0392b" : "#888" }}
+                                          title="תאריך צפוי לתשלום"
+                                        />
+                                      )}
+                                    </div>
+                                  </div>
+                                  {/* Amount + actions */}
+                                  <div className="text-left shrink-0">
+                                    {editingAmt ? (
+                                      <input
+                                        autoFocus
+                                        type="number"
+                                        className="w-24 text-sm border border-blue-300 rounded px-2 py-0.5 outline-none"
+                                        value={editingMilestone.value}
+                                        onChange={e => setEditingMilestone(p => p ? { ...p, value: e.target.value } : p)}
+                                        onBlur={() => saveMilestoneField(q.id, ms.id, "amount", editingMilestone.value)}
+                                        onKeyDown={e => {
+                                          if (e.key === "Enter") saveMilestoneField(q.id, ms.id, "amount", editingMilestone.value);
+                                          if (e.key === "Escape") setEditingMilestone(null);
+                                        }}
+                                      />
+                                    ) : (
+                                      <span
+                                        className="font-semibold text-sm cursor-pointer hover:underline"
+                                        onClick={() => setEditingMilestone({ id: ms.id, field: "amount", value: String(ms.amount) })}
+                                        style={{ color: ms.is_paid ? "#16a34a" : "#011e41" }}>
+                                        {ms.is_paid && ms.paid_amount != null && ms.paid_amount !== ms.amount
+                                          ? <><span className="line-through text-gray-400 text-xs ml-1">{fmt(ms.amount)}</span>{fmt(ms.paid_amount)}</>
+                                          : fmt(ms.amount)
+                                        }
+                                      </span>
+                                    )}
+                                    <div className="mt-1.5 flex gap-1 justify-end">
+                                      {ms.is_paid === 0 && !isPaying && (
+                                        <button
+                                          onClick={() => { setPayingMsId(ms.id); setPayingMsAmount(String(ms.amount)); }}
+                                          className="text-xs px-2 py-1 rounded-lg font-medium"
+                                          style={{ background: "#27ae6020", color: "#27ae60" }}
+                                        >סמן כשולם</button>
+                                      )}
+                                      {ms.is_paid === 1 && (
+                                        <button
+                                          onClick={() => unmarkMilestonePaid(q, ms)}
+                                          className="text-xs px-2 py-1 rounded-lg"
+                                          style={{ background: "#f5f5f5", color: "#999" }}
+                                        >בטל</button>
+                                      )}
+                                      <button
+                                        onClick={() => deleteMilestone(q.id, ms.id)}
+                                        className="opacity-0 group-hover/ms:opacity-100 text-gray-300 hover:text-red-500 transition-all text-xs px-1"
+                                        title="מחק"
+                                      >✕</button>
+                                    </div>
+                                  </div>
+                                </div>
+                                {/* Inline pay form */}
+                                {isPaying && (
+                                  <div className="border-t border-gray-100 px-3 py-2 flex items-center gap-2 bg-white flex-wrap">
+                                    <span className="text-xs text-gray-500">סכום ששולם:</span>
+                                    <input
+                                      type="number"
+                                      value={payingMsAmount}
+                                      onChange={e => setPayingMsAmount(e.target.value)}
+                                      className="border border-gray-200 rounded px-2 py-1 text-sm w-24 outline-none"
+                                    />
+                                    <span className="text-xs text-gray-400">מתוך {fmt(ms.amount)}</span>
+                                    <button
+                                      onClick={() => markMilestonePaid(q, ms, parseFloat(payingMsAmount) || ms.amount)}
+                                      className="text-xs px-3 py-1 rounded-lg text-white"
+                                      style={{ background: "#27ae60" }}
+                                    >אשר</button>
+                                    <button
+                                      onClick={() => { setPayingMsId(null); setPayingMsAmount(""); }}
+                                      className="text-xs px-2 py-1 rounded-lg"
+                                      style={{ background: "#f5f5f5", color: "#999" }}
+                                    >ביטול</button>
+                                  </div>
                                 )}
-                                {editingAmt ? (
-                                  <input
-                                    autoFocus
-                                    type="number"
-                                    className="w-28 text-sm border border-blue-300 rounded px-2 py-0.5 outline-none text-left flex-shrink-0"
-                                    value={editingMilestone.value}
-                                    onChange={e => setEditingMilestone(p => p ? { ...p, value: e.target.value } : p)}
-                                    onBlur={() => saveMilestoneField(q.id, ms.id, "amount", editingMilestone.value)}
-                                    onKeyDown={e => {
-                                      if (e.key === "Enter") saveMilestoneField(q.id, ms.id, "amount", editingMilestone.value);
-                                      if (e.key === "Escape") setEditingMilestone(null);
-                                    }}
-                                  />
-                                ) : (
-                                  <span
-                                    className="font-medium text-xs flex-shrink-0 cursor-pointer hover:underline"
-                                    title="לחץ לעריכת סכום"
-                                    onClick={() => setEditingMilestone({ id: ms.id, field: "amount", value: String(ms.amount) })}
-                                    style={{ color: ms.is_paid ? "#aaa" : "#011e41" }}>
-                                    {fmt(ms.amount)}
-                                  </span>
-                                )}
-                                <input
-                                  type="date"
-                                  value={ms.due_date ? ms.due_date.slice(0, 10) : ""}
-                                  onChange={e => saveMilestoneDueDate(q, ms, e.target.value)}
-                                  className="text-xs border border-gray-200 rounded px-1 py-0.5 outline-none w-32 flex-shrink-0"
-                                  style={{ color: isOverdue ? "#c0392b" : "#888" }}
-                                  title="תאריך צפוי לתשלום"
-                                />
-                                {ms.is_paid === 1 && <span className="text-xs text-green-600 flex-shrink-0">✓ שולם</span>}
-                                <button
-                                  onClick={() => deleteMilestone(q.id, ms.id)}
-                                  className="opacity-0 group-hover/ms:opacity-100 text-gray-300 hover:text-red-500 transition-all flex-shrink-0 text-xs px-1"
-                                  title="מחק אבן דרך"
-                                >✕</button>
                               </div>
                             );
                           })}

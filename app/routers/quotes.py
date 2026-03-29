@@ -79,7 +79,9 @@ def _analyse_pdf_with_claude(
   "milestones": [
     {{
       "description": "תיאור אבן הדרך",
-      "amount": <סכום בשקלים>,
+      "percentage": <אחוז מספרי כמו 10, 20 — או null>,
+      "amount": <סכום בשקלים — מחושב לפי האחוז מה-total_amount>,
+      "order": <מספר סידורי 1,2,3...>,
       "due_date": "<YYYY-MM-DD או null>"
     }}
   ],
@@ -217,7 +219,7 @@ async def upload_quote(
     db.add(quote)
 
     # צור אבני דרך
-    for ms in extracted.get("milestones", []):
+    for idx, ms in enumerate(extracted.get("milestones", [])):
         due = None
         if ms.get("due_date"):
             try:
@@ -229,8 +231,11 @@ async def upload_quote(
             tenant_id=tenant_id,
             quote_id=quote_id,
             project_id=project_id_val,
+            task_id=None,
             description=ms.get("description", "תשלום"),
+            percentage=ms.get("percentage"),
             amount=float(ms.get("amount") or 0),
+            order=ms.get("order", idx + 1),
             due_date=due,
             is_paid=0,
             created_at=now,
@@ -372,16 +377,24 @@ def update_milestone(
         raise HTTPException(status_code=404, detail="אבן דרך לא נמצאה")
 
     update_data = data.model_dump(exclude_none=True)
+    # Allow explicit null for nullable fields (task_id unlink, paid_amount clear)
+    for nullable_field in ("task_id", "paid_amount"):
+        if nullable_field in data.model_fields_set and getattr(data, nullable_field) is None:
+            update_data[nullable_field] = None
     now = datetime.now(timezone.utc)
     was_unpaid = ms.is_paid != 1
     # if marking as paid and no paid_at, set it now
     if update_data.get("is_paid") == 1 and not ms.paid_at:
         update_data["paid_at"] = now
+    # if paid_amount not set, default to full amount
+    if update_data.get("is_paid") == 1 and "paid_amount" not in update_data and not ms.paid_amount:
+        update_data["paid_amount"] = ms.amount
     for k, v in update_data.items():
         setattr(ms, k, v)
     ms.updated_at = now
 
     # auto-create actual budget entry when marking as paid
+    actual_amount = update_data.get("paid_amount") or ms.paid_amount or ms.amount
     if update_data.get("is_paid") == 1 and was_unpaid and ms.project_id:
         quote = db.query(models.Quote).filter(models.Quote.id == ms.quote_id).first()
         db.add(models.BudgetEntry(
@@ -391,7 +404,7 @@ def update_milestone(
             category="תשלום",
             description=ms.description,
             vendor=quote.vendor if quote else None,
-            amount=ms.amount,
+            amount=actual_amount,
             entry_date=now,
             is_planned=0,
             notes=f"תשלום מהצעה: {quote.title if quote else ''}",
@@ -444,8 +457,11 @@ def add_milestone(
         tenant_id=tenant_id,
         quote_id=quote_id,
         project_id=quote.project_id,
+        task_id=str(data.task_id) if data.task_id else None,
         description=data.description,
+        percentage=data.percentage,
         amount=data.amount,
+        order=data.order,
         due_date=data.due_date,
         is_paid=0,
         created_at=now,

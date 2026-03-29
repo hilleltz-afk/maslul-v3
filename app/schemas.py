@@ -309,8 +309,10 @@ class EmailApproveRequest(BaseModel):
 class PaymentMilestoneCreate(BaseModel):
     description: constr(min_length=1)
     amount: float
+    percentage: Optional[float] = None
+    order: int = 0
     due_date: Optional[datetime] = None
-    is_paid: int = 0
+    task_id: Optional[UUID] = None
 
 
 class PaymentMilestoneRead(BaseModel):
@@ -318,10 +320,14 @@ class PaymentMilestoneRead(BaseModel):
     tenant_id: UUID
     quote_id: UUID
     project_id: Optional[UUID] = None
+    task_id: Optional[UUID] = None
     description: str
+    percentage: Optional[float] = None
     amount: float
+    order: int = 0
     due_date: Optional[datetime] = None
     paid_at: Optional[datetime] = None
+    paid_amount: Optional[float] = None
     is_paid: int = 0
     created_at: datetime
     created_by: Optional[UUID] = None
@@ -332,8 +338,12 @@ class PaymentMilestoneRead(BaseModel):
 class PaymentMilestoneUpdate(BaseModel):
     description: Optional[str] = None
     amount: Optional[float] = None
+    percentage: Optional[float] = None
+    order: Optional[int] = None
     due_date: Optional[datetime] = None
+    task_id: Optional[UUID] = None
     is_paid: Optional[int] = None
+    paid_amount: Optional[float] = None
     paid_at: Optional[datetime] = None
 
 

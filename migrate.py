@@ -192,6 +192,10 @@ DDL = [
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS gmail_refresh_token VARCHAR",
     "ALTER TABLE template_tasks ADD COLUMN IF NOT EXISTS assignee_role VARCHAR",
     "ALTER TABLE email_pipeline ADD COLUMN IF NOT EXISTS approved_project_id UUID",
+    "ALTER TABLE payment_milestones ADD COLUMN IF NOT EXISTS task_id UUID",
+    "ALTER TABLE payment_milestones ADD COLUMN IF NOT EXISTS percentage FLOAT",
+    "ALTER TABLE payment_milestones ADD COLUMN IF NOT EXISTS paid_amount FLOAT",
+    "ALTER TABLE payment_milestones ADD COLUMN IF NOT EXISTS \"order\" INTEGER NOT NULL DEFAULT 0",
     # ---- Fix: allow re-inviting after soft-delete (partial unique index on email) ----
     "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_email_key",
     "CREATE UNIQUE INDEX IF NOT EXISTS users_email_active_unique ON users(email) WHERE deleted_at IS NULL",
