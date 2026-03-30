@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { getTenantId } from "@/lib/tenant";
 import { apiFetch, API_BASE } from "@/lib/api";
 
-const TENANT_ID = getTenantId();
 
 interface Project { id: string; name: string; }
 interface Stage { id: string; name: string; project_id: string; }
@@ -64,11 +63,12 @@ export default function MeetingsPage() {
 
   async function loadAll() {
     setLoading(true);
+    const tid = getTenantId();
     try {
       const [projs, mtgs, stgs]: [Project[], Meeting[], Stage[]] = await Promise.all([
-        apiFetch(`/tenants/${TENANT_ID}/projects/`),
-        apiFetch(`/tenants/${TENANT_ID}/meetings/`),
-        apiFetch(`/tenants/${TENANT_ID}/stages/`),
+        apiFetch(`/tenants/${tid}/projects/`),
+        apiFetch(`/tenants/${tid}/meetings/`),
+        apiFetch(`/tenants/${tid}/stages/`),
       ]);
       setProjects(projs);
       setMeetings(mtgs);
@@ -83,7 +83,8 @@ export default function MeetingsPage() {
     setProcessing(true);
     setProcessError("");
     try {
-      const m: Meeting = await apiFetch(`/tenants/${TENANT_ID}/meetings/process`, {
+      const tid = getTenantId();
+      const m: Meeting = await apiFetch(`/tenants/${tid}/meetings/process`, {
         method: "POST",
         body: JSON.stringify({ project_id: newProjectId, raw_text: rawText }),
       });
@@ -103,7 +104,7 @@ export default function MeetingsPage() {
     if (!editing) return;
     setSaving(true);
     try {
-      const updated: Meeting = await apiFetch(`/tenants/${TENANT_ID}/meetings/${editing.id}`, {
+      const updated: Meeting = await apiFetch(`/tenants/${getTenantId()}/meetings/${editing.id}`, {
         method: "PUT",
         body: JSON.stringify({
           title: editing.title,
@@ -125,7 +126,7 @@ export default function MeetingsPage() {
 
   async function deleteMeeting(id: string) {
     if (!confirm("למחוק סיכום פגישה זה?")) return;
-    await apiFetch(`/tenants/${TENANT_ID}/meetings/${id}`, { method: "DELETE" });
+    await apiFetch(`/tenants/${getTenantId()}/meetings/${id}`, { method: "DELETE" });
     setMeetings(prev => prev.filter(m => m.id !== id));
     if (expandedId === id) setExpandedId(null);
   }
@@ -136,7 +137,7 @@ export default function MeetingsPage() {
     if (items.length === 0) { alert("יש לבחור לפחות משימה אחת"); return; }
     setTaskCreating(true);
     try {
-      const res = await apiFetch(`/tenants/${TENANT_ID}/meetings/${meeting.id}/create-tasks`, {
+      const res = await apiFetch(`/tenants/${getTenantId()}/meetings/${meeting.id}/create-tasks`, {
         method: "POST",
         body: JSON.stringify({ stage_id: selectedStageId, items }),
       });
@@ -286,7 +287,7 @@ export default function MeetingsPage() {
                   </div>
                   <div className="flex gap-2 shrink-0" onClick={e => e.stopPropagation()}>
                     <a
-                      href={`${API_BASE}/tenants/${TENANT_ID}/meetings/${m.id}/pdf`}
+                      href={`${API_BASE}/tenants/${getTenantId()}/meetings/${m.id}/pdf`}
                       target="_blank"
                       rel="noreferrer"
                       className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50"
