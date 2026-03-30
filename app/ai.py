@@ -333,3 +333,51 @@ def analyse_email(
     )
     data = _parse_json(message.content[0].text)
     return EmailAnalysisResult(**data)
+
+
+# ---------------------------------------------------------------------------
+# Meeting Notes Processing
+# ---------------------------------------------------------------------------
+
+def process_meeting_notes(raw_text: str, project_name: str) -> dict:
+    """מעבד טקסט גולמי של פגישה ומחזיר מבנה מסודר."""
+    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+    prompt = f"""אתה עוזר מנהלתי של חברת נדל"ן. קיבלת טקסט גולמי מפגישה עבור הפרויקט: "{project_name}".
+עליך לחלץ ממנו סיכום פגישה מסודר.
+
+החזר JSON בלבד (ללא markdown, ללא ```) בפורמט הבא:
+{{
+  "title": "כותרת הפגישה (קצר, לדוגמא: סיכום פגישת תכנון ראשונית)",
+  "meeting_date": "תאריך הפגישה בפורמט DD.MM.YYYY אם מוזכר, אחרת null",
+  "participants": ["שם1", "שם2"],
+  "overview": "סקירה כללית של הנושאים שנדונו (2-4 משפטים)",
+  "decisions": ["החלטה 1", "החלטה 2"],
+  "action_items": [
+    {{
+      "title": "תיאור המשימה",
+      "assignee": "שם האחראי אם מוזכר, אחרת null",
+      "due_date": "YYYY-MM-DD אם מוזכר, אחרת null",
+      "notes": "הערות נוספות אם יש"
+    }}
+  ]
+}}
+
+טקסט הפגישה:
+{raw_text}"""
+
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=2000,
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    import json
+    text = response.content[0].text.strip()
+    # נקה markdown אם יש
+    if text.startswith("```"):
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+    text = text.strip()
+    return json.loads(text)

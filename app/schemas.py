@@ -567,3 +567,65 @@ class ApplyTemplateRequest(BaseModel):
     selected_task_ids: list[UUID]
     # תאריך התחלה לחישוב due_date לפי estimated_days (אופציונלי)
     start_date: Optional[str] = None  # YYYY-MM-DD
+
+
+# ---------------------------------------------------------------------------
+# Meeting Summaries
+# ---------------------------------------------------------------------------
+
+class ActionItem(BaseModel):
+    title: str
+    assignee: Optional[str] = None
+    due_date: Optional[str] = None   # YYYY-MM-DD
+    notes: Optional[str] = None
+
+
+class MeetingSummaryCreate(BaseModel):
+    project_id: UUID
+    title: str
+    raw_text: Optional[str] = None
+    meeting_date: Optional[str] = None
+    participants: Optional[list[str]] = None
+    overview: Optional[str] = None
+    decisions: Optional[list[str]] = None
+    action_items: Optional[list[ActionItem]] = None
+    status: Optional[str] = "draft"
+
+
+class MeetingSummaryUpdate(BaseModel):
+    title: Optional[str] = None
+    meeting_date: Optional[str] = None
+    participants: Optional[list[str]] = None
+    overview: Optional[str] = None
+    decisions: Optional[list[str]] = None
+    action_items: Optional[list[ActionItem]] = None
+    status: Optional[str] = None
+
+
+class MeetingSummaryRead(BaseModel):
+    id: UUID
+    project_id: UUID
+    title: str
+    raw_text: Optional[str] = None
+    meeting_date: Optional[str] = None
+    participants: Optional[list[str]] = None
+    overview: Optional[str] = None
+    decisions: Optional[list[str]] = None
+    action_items: Optional[list[ActionItem]] = None
+    status: str
+    document_id: Optional[UUID] = None
+    created_by: Optional[UUID] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ProcessMeetingRequest(BaseModel):
+    project_id: UUID
+    raw_text: str
+
+
+class CreateTasksFromMeetingRequest(BaseModel):
+    """בחירת פריטי action items ליצירה כמשימות."""
+    stage_id: UUID
+    items: list[ActionItem]

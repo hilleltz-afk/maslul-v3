@@ -7,7 +7,7 @@ import os
 import sys
 import psycopg2
 
-HEAD = "k6f7a8b9c0d1"
+HEAD = "m7g8h9i0j1k2"
 
 db_url = os.getenv("DATABASE_URL", "")
 
@@ -163,6 +163,25 @@ DDL = [
         updated_at TIMESTAMP,
         deleted_at TIMESTAMP,
         created_by VARCHAR(36)
+    )""",
+    # ---- Meeting Summaries ----
+    """CREATE TABLE IF NOT EXISTS meeting_summaries (
+        id VARCHAR(36) PRIMARY KEY,
+        tenant_id VARCHAR(36) REFERENCES tenants(id) NOT NULL,
+        project_id VARCHAR(36) REFERENCES projects(id) NOT NULL,
+        title VARCHAR NOT NULL,
+        raw_text TEXT,
+        meeting_date VARCHAR,
+        participants TEXT,
+        overview TEXT,
+        decisions TEXT,
+        action_items TEXT,
+        status VARCHAR NOT NULL DEFAULT 'draft',
+        document_id VARCHAR(36),
+        created_by VARCHAR(36),
+        created_at TIMESTAMP,
+        updated_at TIMESTAMP,
+        deleted_at TIMESTAMP
     )""",
     # ---- New columns (ADD COLUMN IF NOT EXISTS) ----
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR NOT NULL DEFAULT 'member'",

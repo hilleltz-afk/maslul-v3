@@ -2,7 +2,7 @@ from sqlalchemy import CHAR, Column, DateTime, Enum, Float, ForeignKey, Integer,
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from .database import Base
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum as PyEnum
 
 
@@ -387,3 +387,27 @@ class EmailPipelineItem(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at = Column(DateTime, nullable=True)
     created_by = Column(GUID(), ForeignKey("users.id"), nullable=True)
+
+class MeetingSummary(Base):
+    """סיכום פגישה — מחולץ על ידי AI מטקסט גולמי."""
+    __tablename__ = "meeting_summaries"
+
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(GUID(), ForeignKey("tenants.id"), nullable=False)
+    project_id = Column(GUID(), ForeignKey("projects.id"), nullable=False)
+
+    title = Column(String, nullable=False)           # כותרת הפגישה
+    raw_text = Column(Text, nullable=True)           # הטקסט הגולמי שהודבק
+    meeting_date = Column(String, nullable=True)     # תאריך הפגישה (string גמיש)
+    participants = Column(Text, nullable=True)       # JSON: ["שם1", "שם2", ...]
+    overview = Column(Text, nullable=True)           # סקירה כללית
+    decisions = Column(Text, nullable=True)          # JSON: ["החלטה1", ...]
+    action_items = Column(Text, nullable=True)       # JSON: [{title, assignee, due_date, notes}, ...]
+    status = Column(String, default="draft")        # draft | finalized
+
+    document_id = Column(GUID(), ForeignKey("documents.id"), nullable=True)  # תיוק
+
+    created_by = Column(GUID(), ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    deleted_at = Column(DateTime, nullable=True)

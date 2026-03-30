@@ -13,6 +13,7 @@ const mainNavItems = [
   { href: "/calendar", label: "לוח שנה", icon: "📅" },
   { href: "/budget", label: "תקציב", icon: "₪" },
   { href: "/pipeline", label: "Pipeline AI", icon: "✉" },
+  { href: "/meetings", label: "פגישות", icon: "📝" },
   { href: "/ai", label: "AI עוזר", icon: "✨" },
 ];
 

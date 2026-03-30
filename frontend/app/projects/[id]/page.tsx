@@ -40,7 +40,7 @@ interface Quote { id: string; project_id?: string; vendor?: string; title: strin
 
 const DEFAULT_WIDTHS: Record<string, number> = { title: 300, assignee: 130, contact: 160, status: 140, priority: 110, start_date: 120, end_date: 120, notes: 200 };
 
-type Tab = "tasks" | "kanban" | "gantt" | "budget" | "comments" | "docs" | "professionals";
+type Tab = "tasks" | "kanban" | "gantt" | "budget" | "comments" | "docs" | "professionals" | "meetings";
 
 interface Doc { id: string; name: string; path: string; expiry_date?: string; task_id?: string; stage_id?: string; project_id?: string; }
 
@@ -892,6 +892,7 @@ export default function ProjectPage() {
           { id: "docs" as Tab, label: "מסמכים" },
           { id: "comments" as Tab, label: "תגובות" },
           { id: "professionals" as Tab, label: "אנשי מקצוע" },
+          { id: "meetings" as Tab, label: "פגישות" },
         ].map(t => (
           <button
             key={t.id}
@@ -2827,6 +2828,292 @@ export default function ProjectPage() {
           </div>
         );
       })()}
+      {/* Tab: Meetings */}
+      {tab === "meetings" && (
+        <ProjectMeetingsTab projectId={projectId} tenantId={TENANT_ID} stages={stages} />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Project Meetings Tab — inline component
+// ---------------------------------------------------------------------------
+function ProjectMeetingsTab({ projectId, tenantId, stages }: {
+  projectId: string;
+  tenantId: string;
+  stages: { id: string; name: string }[];
+}) {
+  const [meetings, setMeetings] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showNew, setShowNew] = useState(false);
+  const [rawText, setRawText] = useState("");
+  const [processing, setProcessing] = useState(false);
+  const [processError, setProcessError] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<any | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [creatingTasks, setCreatingTasks] = useState<string | null>(null);
+  const [selectedStageId, setSelectedStageId] = useState(stages[0]?.id || "");
+  const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
+  const [taskCreating, setTaskCreating] = useState(false);
+
+  useEffect(() => { loadMeetings(); }, []);
+
+  async function loadMeetings() {
+    setLoading(true);
+    try {
+      const ms = await apiFetch(`/tenants/${tenantId}/meetings/?project_id=${projectId}`);
+      setMeetings(ms);
+    } catch {}
+    finally { setLoading(false); }
+  }
+
+  async function processNew() {
+    if (!rawText.trim()) { setProcessError("יש להדביק טקסט"); return; }
+    setProcessing(true); setProcessError("");
+    try {
+      const m = await apiFetch(`/tenants/${tenantId}/meetings/process`, {
+        method: "POST",
+        body: JSON.stringify({ project_id: projectId, raw_text: rawText }),
+      });
+      setMeetings(prev => [m, ...prev]);
+      setShowNew(false); setRawText("");
+      setExpandedId(m.id); setEditing({ ...m });
+    } catch (err: any) { setProcessError(err.message || "שגיאה"); }
+    finally { setProcessing(false); }
+  }
+
+  async function saveMeeting() {
+    if (!editing) return;
+    setSaving(true);
+    try {
+      const updated = await apiFetch(`/tenants/${tenantId}/meetings/${editing.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          title: editing.title, meeting_date: editing.meeting_date,
+          participants: editing.participants, overview: editing.overview,
+          decisions: editing.decisions, action_items: editing.action_items,
+        }),
+      });
+      setMeetings(prev => prev.map((m: any) => m.id === updated.id ? updated : m));
+      setEditing(null);
+    } catch (err: any) { alert(err.message); }
+    finally { setSaving(false); }
+  }
+
+  async function deleteMeeting(id: string) {
+    if (!confirm("למחוק?")) return;
+    await apiFetch(`/tenants/${tenantId}/meetings/${id}`, { method: "DELETE" });
+    setMeetings(prev => prev.filter((m: any) => m.id !== id));
+  }
+
+  async function submitCreateTasks(meeting: any) {
+    if (!selectedStageId) { alert("יש לבחור קבוצה"); return; }
+    const items = (meeting.action_items || []).filter((_: any, i: number) => selectedItems.has(i));
+    if (!items.length) { alert("יש לבחור משימות"); return; }
+    setTaskCreating(true);
+    try {
+      const res = await apiFetch(`/tenants/${tenantId}/meetings/${meeting.id}/create-tasks`, {
+        method: "POST",
+        body: JSON.stringify({ stage_id: selectedStageId, items }),
+      });
+      alert(`נוצרו ${res.count} משימות`);
+      setMeetings(prev => prev.map((m: any) => m.id === meeting.id ? { ...m, status: "finalized" } : m));
+      setCreatingTasks(null); setSelectedItems(new Set());
+    } catch (err: any) { alert(err.message); }
+    finally { setTaskCreating(false); }
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto p-6" dir="rtl">
+      <div className="max-w-3xl mx-auto space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold" style={{ color: "#011e41" }}>סיכומי פגישות</h2>
+          <button
+            onClick={() => { setShowNew(true); setProcessError(""); }}
+            className="text-sm px-3 py-1.5 rounded-lg text-white"
+            style={{ background: "#011e41" }}
+          >+ פגישה חדשה</button>
+        </div>
+
+        {/* New meeting */}
+        {showNew && (
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 space-y-3">
+            <div className="text-sm font-medium" style={{ color: "#011e41" }}>הדבק טקסט פגישה</div>
+            <textarea
+              value={rawText}
+              onChange={e => setRawText(e.target.value)}
+              rows={7}
+              placeholder="הדבק ציון / נקודות פגישה..."
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none resize-y w-full"
+            />
+            {processError && <div className="text-sm text-red-600">{processError}</div>}
+            <div className="flex gap-2">
+              <button onClick={processNew} disabled={processing}
+                className="px-4 py-2 rounded-lg text-white text-sm font-medium"
+                style={{ background: "#011e41", opacity: processing ? 0.6 : 1 }}>
+                {processing ? "⏳ Claude מעבד..." : "✨ עבד עם AI"}
+              </button>
+              <button onClick={() => { setShowNew(false); setRawText(""); }}
+                className="px-3 py-2 rounded-lg text-sm text-gray-500" style={{ background: "#f5f5f5" }}>
+                ביטול
+              </button>
+            </div>
+            {processing && <p className="text-xs text-gray-400">Claude Sonnet מנתח... כ-15 שניות</p>}
+          </div>
+        )}
+
+        {loading && <div className="text-center py-10 text-gray-400">טוען...</div>}
+        {!loading && meetings.length === 0 && !showNew && (
+          <div className="text-center py-10 text-gray-400">אין סיכומי פגישות לפרויקט זה</div>
+        )}
+
+        {meetings.map((m: any) => {
+          const isExpanded = expandedId === m.id;
+          const isEditing = editing?.id === m.id;
+          const ed = isEditing ? editing : m;
+
+          return (
+            <div key={m.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-gray-50"
+                onClick={() => setExpandedId(isExpanded ? null : m.id)}>
+                <span className="text-gray-300 text-xs">{isExpanded ? "▲" : "▼"}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm">{m.title}</span>
+                    <span className="text-xs px-1.5 py-0.5 rounded-full font-medium"
+                      style={{ background: m.status === "finalized" ? "#d1fae5" : "#fef9c3", color: m.status === "finalized" ? "#16a34a" : "#b45309" }}>
+                      {m.status === "finalized" ? "מאושר" : "טיוטה"}
+                    </span>
+                  </div>
+                  {m.meeting_date && <div className="text-xs text-gray-400 mt-0.5">{m.meeting_date}</div>}
+                </div>
+                <div className="flex gap-2 shrink-0" onClick={e => e.stopPropagation()}>
+                  <a href={`${API_BASE}/tenants/${tenantId}/meetings/${m.id}/pdf`} target="_blank" rel="noreferrer"
+                    className="text-xs px-2 py-1 rounded border border-gray-200 text-gray-500 hover:bg-gray-50">
+                    🖨️ PDF
+                  </a>
+                  <button onClick={() => deleteMeeting(m.id)}
+                    className="text-xs text-gray-300 hover:text-red-400 px-1">✕</button>
+                </div>
+              </div>
+
+              {isExpanded && (
+                <div className="border-t border-gray-100 px-4 py-4 space-y-4">
+                  <div className="flex gap-2">
+                    {!isEditing ? (
+                      <button onClick={() => setEditing({ ...m })}
+                        className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">
+                        ✏️ ערוך
+                      </button>
+                    ) : (
+                      <>
+                        <button onClick={saveMeeting} disabled={saving}
+                          className="text-xs px-3 py-1.5 rounded-lg text-white"
+                          style={{ background: "#011e41", opacity: saving ? 0.6 : 1 }}>
+                          {saving ? "שומר..." : "שמור"}
+                        </button>
+                        <button onClick={() => setEditing(null)}
+                          className="text-xs px-2 py-1 rounded text-gray-400" style={{ background: "#f5f5f5" }}>ביטול</button>
+                      </>
+                    )}
+                    {m.status !== "finalized" && creatingTasks !== m.id && (
+                      <button onClick={() => {
+                        setCreatingTasks(m.id);
+                        setSelectedItems(new Set((m.action_items || []).map((_: any, i: number) => i)));
+                        setSelectedStageId(stages[0]?.id || "");
+                      }}
+                        className="text-xs px-3 py-1.5 rounded-lg font-medium"
+                        style={{ background: "#011e4110", color: "#011e41" }}>
+                        ✓ צור משימות
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Overview */}
+                  {isEditing ? (
+                    <textarea value={ed.overview || ""} onChange={e => setEditing((p: any) => ({ ...p, overview: e.target.value }))}
+                      rows={3} className="border border-gray-200 rounded px-2 py-1 text-sm outline-none w-full resize-y" />
+                  ) : (
+                    m.overview && <p className="text-sm text-gray-700 leading-relaxed">{m.overview}</p>
+                  )}
+
+                  {/* Decisions */}
+                  {(m.decisions || []).length > 0 && !isEditing && (
+                    <div>
+                      <div className="text-xs font-medium text-gray-500 mb-1">החלטות</div>
+                      <ul className="space-y-1">
+                        {m.decisions.map((d: string, i: number) => (
+                          <li key={i} className="flex gap-2 text-sm text-gray-700">
+                            <span className="text-yellow-400 shrink-0">◆</span>{d}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Action items table */}
+                  {(m.action_items || []).length > 0 && !isEditing && (
+                    <div>
+                      <div className="text-xs font-medium text-gray-500 mb-1">משימות</div>
+                      <table className="w-full text-xs">
+                        <thead><tr className="bg-gray-50 text-gray-400">
+                          <th className="text-right px-2 py-1.5 font-medium">משימה</th>
+                          <th className="text-right px-2 py-1.5 font-medium">אחראי</th>
+                          <th className="text-right px-2 py-1.5 font-medium">יעד</th>
+                        </tr></thead>
+                        <tbody>{m.action_items.map((a: any, i: number) => (
+                          <tr key={i} className="border-t border-gray-50">
+                            <td className="px-2 py-1.5 font-medium">{a.title}</td>
+                            <td className="px-2 py-1.5 text-gray-500">{a.assignee || "—"}</td>
+                            <td className="px-2 py-1.5 text-gray-500">{a.due_date || "—"}</td>
+                          </tr>
+                        ))}</tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Create tasks */}
+                  {creatingTasks === m.id && (
+                    <div className="border border-blue-100 rounded-xl bg-blue-50 p-3 space-y-2">
+                      <div className="text-xs font-semibold" style={{ color: "#011e41" }}>יצירת משימות</div>
+                      <select value={selectedStageId} onChange={e => setSelectedStageId(e.target.value)}
+                        className="border border-gray-200 rounded px-2 py-1 text-xs bg-white outline-none">
+                        <option value="">בחר קבוצה...</option>
+                        {stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                      <div className="space-y-1">
+                        {(m.action_items || []).map((a: any, i: number) => (
+                          <label key={i} className="flex items-center gap-2 cursor-pointer text-xs">
+                            <input type="checkbox" checked={selectedItems.has(i)}
+                              onChange={() => setSelectedItems(prev => {
+                                const next = new Set(prev);
+                                if (next.has(i)) next.delete(i); else next.add(i);
+                                return next;
+                              })} className="accent-blue-600" />
+                            <span className="font-medium">{a.title}</span>
+                            {a.assignee && <span className="text-gray-400">· {a.assignee}</span>}
+                          </label>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => submitCreateTasks(m)} disabled={taskCreating}
+                          className="text-xs px-3 py-1.5 rounded-lg text-white"
+                          style={{ background: "#011e41", opacity: taskCreating ? 0.6 : 1 }}>
+                          {taskCreating ? "יוצר..." : `צור ${selectedItems.size} משימות`}
+                        </button>
+                        <button onClick={() => setCreatingTasks(null)}
+                          className="text-xs px-2 py-1 rounded text-gray-400" style={{ background: "#f5f5f5" }}>ביטול</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
