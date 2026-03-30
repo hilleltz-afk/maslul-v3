@@ -65,10 +65,10 @@ export default function MeetingsPage() {
     setLoading(true);
     const tid = getTenantId();
     try {
-      const [projs, mtgs, stgs]: [Project[], Meeting[], Stage[]] = await Promise.all([
-        apiFetch(`/tenants/${tid}/projects/`),
-        apiFetch(`/tenants/${tid}/meetings/`),
-        apiFetch(`/tenants/${tid}/stages/`),
+      const [projs, mtgs, stgs] = await Promise.all([
+        apiFetch(`/tenants/${tid}/projects/`).catch(() => []),
+        apiFetch(`/tenants/${tid}/meetings/`).catch(() => []),
+        apiFetch(`/tenants/${tid}/stages/`).catch(() => []),
       ]);
       setProjects(projs);
       setMeetings(mtgs);
