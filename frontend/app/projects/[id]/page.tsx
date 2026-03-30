@@ -892,7 +892,7 @@ export default function ProjectPage() {
           { id: "docs" as Tab, label: "מסמכים" },
           { id: "comments" as Tab, label: "תגובות" },
           { id: "professionals" as Tab, label: "אנשי מקצוע" },
-          { id: "meetings" as Tab, label: "פגישות" },
+          { id: "meetings" as Tab, label: "סיכומי פגישות" },
         ].map(t => (
           <button
             key={t.id}
