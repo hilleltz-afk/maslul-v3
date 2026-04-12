@@ -1,6 +1,7 @@
 """
 סיכומי פגישות — עיבוד AI, עריכה, יצירת משימות, הפקת PDF.
 """
+import base64
 import json
 import os
 import uuid
@@ -8,7 +9,8 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import anthropic
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
@@ -115,6 +117,114 @@ def process_meeting(
         project_id=req.project_id,
         title=structured.get("title", "פגישה"),
         raw_text=req.raw_text,
+        meeting_date=structured.get("meeting_date"),
+        participants=json.dumps(structured.get("participants") or [], ensure_ascii=False),
+        overview=structured.get("overview"),
+        decisions=json.dumps(structured.get("decisions") or [], ensure_ascii=False),
+        action_items=json.dumps(structured.get("action_items") or [], ensure_ascii=False),
+        status="draft",
+        created_by=user_id,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(meeting)
+    db.commit()
+    db.refresh(meeting)
+    return _meeting_to_schema(meeting)
+
+
+# ---------------------------------------------------------------------------
+# Upload PDF
+# ---------------------------------------------------------------------------
+
+def _process_pdf_with_claude(pdf_bytes: bytes, project_name: str) -> dict:
+    """שלח PDF של פגישה ל-Claude לניתוח וחילוץ מבנה."""
+    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    pdf_b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
+
+    prompt = f"""אתה עוזר מנהלתי של חברת נדל"ן. קיבלת מסמך PDF של פגישה עבור הפרויקט: "{project_name}".
+חלץ ממנו סיכום פגישה מסודר.
+
+החזר JSON בלבד (ללא markdown, ללא ```) בפורמט הבא:
+{{
+  "title": "כותרת הפגישה",
+  "meeting_date": "תאריך בפורמט DD.MM.YYYY אם מוזכר, אחרת null",
+  "participants": ["שם1", "שם2"],
+  "overview": "סקירה כללית של הנושאים שנדונו (2-4 משפטים)",
+  "decisions": ["החלטה 1", "החלטה 2"],
+  "action_items": [
+    {{
+      "title": "תיאור המשימה",
+      "assignee": "שם האחראי אם מוזכר, אחרת null",
+      "due_date": "YYYY-MM-DD אם מוזכר, אחרת null",
+      "notes": "הערות נוספות אם יש"
+    }}
+  ]
+}}"""
+
+    message = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=2000,
+        extra_headers={"anthropic-beta": "pdfs-2024-09-25"},
+        messages=[{
+            "role": "user",
+            "content": [
+                {
+                    "type": "document",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "application/pdf",
+                        "data": pdf_b64,
+                    },
+                },
+                {"type": "text", "text": prompt},
+            ],
+        }],
+    )
+
+    text = message.content[0].text.strip()
+    if text.startswith("```"):
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+    return json.loads(text.strip())
+
+
+@router.post("/upload-pdf", response_model=schemas.MeetingSummaryRead)
+async def upload_pdf_meeting(
+    tenant_id: UUID,
+    project_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user_id: str | None = Depends(get_current_user_id),
+):
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="יש להעלות קובץ PDF")
+
+    pdf_bytes = await file.read()
+    if len(pdf_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="הקובץ גדול מדי (מקסימום 10MB)")
+
+    project = db.query(models.Project).filter(
+        models.Project.id == project_id,
+        models.Project.tenant_id == tenant_id,
+        models.Project.deleted_at.is_(None),
+    ).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="פרויקט לא נמצא")
+
+    try:
+        structured = _process_pdf_with_claude(pdf_bytes, project.name)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"שגיאה בניתוח PDF: {str(e)}")
+
+    now = datetime.now(timezone.utc)
+    meeting = models.MeetingSummary(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        project_id=project_id,
+        title=structured.get("title", file.filename),
+        raw_text=None,
         meeting_date=structured.get("meeting_date"),
         participants=json.dumps(structured.get("participants") or [], ensure_ascii=False),
         overview=structured.get("overview"),

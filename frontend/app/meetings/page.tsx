@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getTenantId } from "@/lib/tenant";
-import { apiFetch, API_BASE } from "@/lib/api";
+import { apiFetch, apiUpload, API_BASE } from "@/lib/api";
 
 
 interface Project { id: string; name: string; }
@@ -44,6 +44,7 @@ export default function MeetingsPage() {
   const [rawText, setRawText] = useState<string>("");
   const [processing, setProcessing] = useState(false);
   const [processError, setProcessError] = useState("");
+  const pdfInputRef = useRef<HTMLInputElement>(null);
 
   // Expanded / editing meeting
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -97,6 +98,29 @@ export default function MeetingsPage() {
       setProcessError(err.message || "שגיאה בעיבוד");
     } finally {
       setProcessing(false);
+    }
+  }
+
+  async function uploadPdf(file: File) {
+    if (!newProjectId) { setProcessError("יש לבחור פרויקט לפני העלאה"); return; }
+    setProcessing(true);
+    setProcessError("");
+    try {
+      const tid = getTenantId();
+      const fd = new FormData();
+      fd.append("file", file);
+      const m: Meeting = await apiUpload(
+        `/tenants/${tid}/meetings/upload-pdf?project_id=${newProjectId}`, fd
+      );
+      setMeetings(prev => [m, ...prev]);
+      setShowNew(false);
+      setExpandedId(m.id);
+      setEditing({ ...m });
+    } catch (err: any) {
+      setProcessError(err.message || "שגיאה בניתוח PDF");
+    } finally {
+      setProcessing(false);
+      if (pdfInputRef.current) pdfInputRef.current.value = "";
     }
   }
 
@@ -193,26 +217,54 @@ export default function MeetingsPage() {
                 </select>
               </div>
             </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-500">טקסט הפגישה (הדבק ציון, נקודות, כל פורמט)</label>
-              <textarea
-                value={rawText}
-                onChange={e => setRawText(e.target.value)}
-                rows={8}
-                placeholder="הדבק כאן את הציון / נקודות הפגישה..."
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none resize-y"
-                style={{ fontFamily: "inherit" }}
-              />
+            {/* Two input options: text or PDF */}
+            <div className="flex gap-2 text-xs text-gray-400 items-center">
+              <span className="font-medium text-gray-500">אפשרות א׳ — הדבק טקסט:</span>
             </div>
+            <textarea
+              value={rawText}
+              onChange={e => setRawText(e.target.value)}
+              rows={6}
+              placeholder="הדבק כאן את הציון / נקודות הפגישה..."
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none resize-y w-full"
+              style={{ fontFamily: "inherit" }}
+            />
+
+            <div className="flex items-center gap-3">
+              <div className="flex-1 border-t border-gray-100" />
+              <span className="text-xs text-gray-400">או</span>
+              <div className="flex-1 border-t border-gray-100" />
+            </div>
+
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-500 font-medium">אפשרות ב׳ — העלה PDF:</span>
+              <input
+                ref={pdfInputRef}
+                type="file"
+                accept=".pdf"
+                className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) uploadPdf(f); }}
+              />
+              <button
+                onClick={() => { if (!newProjectId) { setProcessError("יש לבחור פרויקט תחילה"); return; } pdfInputRef.current?.click(); }}
+                disabled={processing}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                style={{ opacity: processing ? 0.6 : 1 }}
+              >
+                📎 בחר PDF
+              </button>
+              <span className="text-xs text-gray-400">Claude יקרא וינתח את המסמך</span>
+            </div>
+
             {processError && <div className="text-sm text-red-600">{processError}</div>}
             <div className="flex gap-2">
               <button
                 onClick={processNew}
-                disabled={processing}
+                disabled={processing || !rawText.trim()}
                 className="px-4 py-2 rounded-lg text-white text-sm font-medium transition-opacity"
-                style={{ background: "#011e41", opacity: processing ? 0.6 : 1 }}
+                style={{ background: "#011e41", opacity: (processing || !rawText.trim()) ? 0.4 : 1 }}
               >
-                {processing ? "⏳ Claude מעבד..." : "✨ עבד עם AI"}
+                {processing ? "⏳ Claude מעבד..." : "✨ עבד טקסט עם AI"}
               </button>
               <button
                 onClick={() => { setShowNew(false); setRawText(""); setProcessError(""); }}
