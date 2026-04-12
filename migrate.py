@@ -165,10 +165,18 @@ DDL = [
         created_by VARCHAR(36)
     )""",
     # ---- Meeting Summaries ----
+    # Drop old table if it has wrong column types (VARCHAR instead of UUID)
+    """DO $$ BEGIN
+        IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='meeting_summaries' AND column_name='id'
+              AND data_type='character varying'
+        ) THEN DROP TABLE IF EXISTS meeting_summaries CASCADE; END IF;
+    END $$""",
     """CREATE TABLE IF NOT EXISTS meeting_summaries (
-        id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
-        project_id VARCHAR(36) NOT NULL,
+        id UUID PRIMARY KEY,
+        tenant_id UUID NOT NULL,
+        project_id UUID NOT NULL,
         title VARCHAR NOT NULL,
         raw_text TEXT,
         meeting_date VARCHAR,
@@ -177,12 +185,13 @@ DDL = [
         decisions TEXT,
         action_items TEXT,
         status VARCHAR NOT NULL DEFAULT 'draft',
-        document_id VARCHAR(36),
-        created_by VARCHAR(36),
-        created_at TIMESTAMP,
-        updated_at TIMESTAMP,
-        deleted_at TIMESTAMP
+        document_id UUID,
+        created_by UUID,
+        created_at TIMESTAMP WITH TIME ZONE,
+        updated_at TIMESTAMP WITH TIME ZONE,
+        deleted_at TIMESTAMP WITH TIME ZONE
     )""",
+    "DROP TABLE IF EXISTS meeting_summaries_old",
     # ---- New columns (ADD COLUMN IF NOT EXISTS) ----
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR NOT NULL DEFAULT 'member'",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR NOT NULL DEFAULT 'active'",
