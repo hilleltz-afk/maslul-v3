@@ -167,8 +167,8 @@ DDL = [
     # ---- Meeting Summaries ----
     """CREATE TABLE IF NOT EXISTS meeting_summaries (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) REFERENCES tenants(id) NOT NULL,
-        project_id VARCHAR(36) REFERENCES projects(id) NOT NULL,
+        tenant_id VARCHAR(36) NOT NULL,
+        project_id VARCHAR(36) NOT NULL,
         title VARCHAR NOT NULL,
         raw_text TEXT,
         meeting_date VARCHAR,
