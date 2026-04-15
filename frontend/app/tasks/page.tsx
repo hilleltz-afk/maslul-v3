@@ -49,6 +49,7 @@ export default function TasksPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [projectFilter, setProjectFilter] = useState("all");
+  const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [search, setSearch] = useState("");
 
   // Bulk selection
@@ -87,6 +88,7 @@ export default function TasksPage() {
     if (statusFilter !== "all" && t.status !== statusFilter) return false;
     if (priorityFilter !== "all" && t.priority !== priorityFilter) return false;
     if (projectFilter !== "all" && t.project_id !== projectFilter) return false;
+    if (assigneeFilter !== "all" && t.assignee_id !== assigneeFilter) return false;
     if (search && !t.title.includes(search) && !t.description?.includes(search)) return false;
     return true;
   });
@@ -199,6 +201,14 @@ export default function TasksPage() {
         >
           <option value="all">כל הפרויקטים</option>
           {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <select
+          value={assigneeFilter}
+          onChange={e => setAssigneeFilter(e.target.value)}
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+        >
+          <option value="all">כל אנשי הצוות</option>
+          {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
         </select>
         <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-1">
           {[["all", "הכל"], ["in_progress", "בעבודה"], ["done", "בוצע"], ["delayed", "בעיכוב"], ["rejected", "נדחה"], ["partial", "בוצע חלקית"]].map(([val, label]) => (
