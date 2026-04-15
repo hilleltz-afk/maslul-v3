@@ -270,37 +270,29 @@ export default function DashboardPage() {
             </a>
           </div>
 
-          {/* Task progress chart */}
+          {/* Task progress pie chart */}
           {total > 0 && (() => {
-            const bars = [
-              { label: "הושלם", count: done, color: "#27ae60" },
-              { label: "בעבודה", count: inProgress, color: "#2980b9" },
-              { label: "באיחור", count: overdueList.length, color: "#c0392b" },
-              { label: "שאר", count: Math.max(0, total - done - inProgress), color: "#e0e0e0" },
-            ];
+            const delayed = filteredTasks.filter(t => t.status === "delayed").length;
+            const rejected = filteredTasks.filter(t => t.status === "rejected").length;
+            const partial = filteredTasks.filter(t => t.status === "partial").length;
+            const other = Math.max(0, total - done - inProgress - delayed - rejected - partial);
+            const taskSlices = [
+              { label: "הושלם", value: done, color: "#27ae60" },
+              { label: "בעבודה", value: inProgress, color: "#2980b9" },
+              { label: "בעיכוב", value: delayed, color: "#e67e22" },
+              { label: "נדחה", value: rejected, color: "#c0392b" },
+              { label: "בוצע חלקית", value: partial, color: "#8e44ad" },
+              { label: "אחר", value: other, color: "#95a5a6" },
+            ].filter(s => s.value > 0);
             const donePct = Math.round((done / total) * 100);
             return (
               <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 mb-6">
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-semibold" style={{ color: "#011e41" }}>התקדמות משימות</span>
                   <span className="text-sm font-bold" style={{ color: "#27ae60" }}>{donePct}% הושלמו</span>
                 </div>
-                <div className="w-full h-4 rounded-full overflow-hidden bg-gray-100 flex mb-3">
-                  {bars.filter(b => b.count > 0).map(b => (
-                    <div
-                      key={b.label}
-                      style={{ width: `${(b.count / total) * 100}%`, background: b.color }}
-                      title={`${b.label}: ${b.count}`}
-                    />
-                  ))}
-                </div>
-                <div className="flex gap-4 flex-wrap">
-                  {bars.filter(b => b.count > 0).map(b => (
-                    <div key={b.label} className="flex items-center gap-1.5">
-                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: b.color }} />
-                      <span className="text-xs text-gray-500">{b.label} ({b.count})</span>
-                    </div>
-                  ))}
+                <div className="flex justify-center">
+                  <PieChart slices={taskSlices} />
                 </div>
               </div>
             );
