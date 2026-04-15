@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
@@ -49,12 +49,18 @@ def read_stage(tenant_id: UUID, stage_id: UUID, db: Session = Depends(get_db)):
 
 
 @router.get("/", response_model=list[schemas.StageRead])
-def list_stages(tenant_id: UUID, db: Session = Depends(get_db)):
-    return (
-        db.query(models.Stage)
-        .filter(models.Stage.tenant_id == tenant_id, models.Stage.deleted_at.is_(None))
-        .all()
+def list_stages(
+    tenant_id: UUID,
+    project_id: UUID | None = None,
+    db: Session = Depends(get_db),
+):
+    q = db.query(models.Stage).filter(
+        models.Stage.tenant_id == tenant_id,
+        models.Stage.deleted_at.is_(None),
     )
+    if project_id:
+        q = q.filter(models.Stage.project_id == project_id)
+    return q.all()
 
 
 @router.put("/{stage_id}", response_model=schemas.StageRead)
