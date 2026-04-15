@@ -491,11 +491,17 @@ export default function ProjectPage() {
   }
 
   async function deleteStage(stageId: string) {
+    const stage = stages.find(s => s.id === stageId);
     const stageTaskCount = tasks.filter(t => t.stage_id === stageId).length;
-    const msg = stageTaskCount > 0
-      ? `למחוק קבוצת משימות זו ואת ${stageTaskCount} המשימות בה?`
-      : "למחוק קבוצת משימות זו?";
-    if (!confirm(msg)) return;
+    if (stageTaskCount > 0) {
+      const input = prompt(`קבוצה זו מכילה ${stageTaskCount} משימות שימחקו גם הן.\nכתוב את שם הקבוצה לאישור: "${stage?.name}"`);
+      if (input?.trim() !== stage?.name?.trim()) {
+        if (input !== null) alert("שם לא תואם — המחיקה בוטלה");
+        return;
+      }
+    } else {
+      if (!confirm(`למחוק את הקבוצה "${stage?.name}"?`)) return;
+    }
     await apiFetch(`/tenants/${TENANT_ID}/stages/${stageId}`, { method: "DELETE" });
     setStages(prev => prev.filter(s => s.id !== stageId));
     setTasks(prev => prev.filter(t => t.stage_id !== stageId));
