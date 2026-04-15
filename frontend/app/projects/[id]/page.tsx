@@ -961,11 +961,19 @@ export default function ProjectPage() {
                 className="mb-6"
                 onDragOver={e => handleStageDragOver(e, stage.id)}
               >
-                <div className="flex items-center gap-2 mb-1 select-none group/stage">
+                <div
+                  className="flex items-center gap-2 mb-1 select-none group/stage cursor-pointer rounded-lg px-2 py-1 hover:bg-gray-100 transition-colors"
+                  onClick={() => setCollapsed(p => ({ ...p, [stage.id]: !p[stage.id] }))}
+                >
+                  {/* Collapse arrow */}
+                  <span className="text-gray-400 text-sm font-bold w-5 text-center transition-transform duration-150" style={{ transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)", display: "inline-block" }}>
+                    ▾
+                  </span>
                   {/* Drag handle */}
                   <span
                     className="text-gray-300 cursor-grab text-xs px-0.5"
                     draggable
+                    onClick={e => e.stopPropagation()}
                     onDragStart={() => setDragStageId(stage.id)}
                     onDragEnd={handleStageDragEnd}
                   >⠿</span>
@@ -992,13 +1000,13 @@ export default function ProjectPage() {
                     <span
                       className="font-semibold text-sm cursor-pointer hover:opacity-70"
                       style={{ color: stage.color || "#011e41" }}
-                      onClick={e => { e.stopPropagation(); setStageMenu(stageMenu === stage.id ? null : stage.id); }}
+                      onClick={e => { e.stopPropagation(); setCollapsed(p => ({ ...p, [stage.id]: !p[stage.id] })); }}
                     >{stage.name}</span>
                   )}
                   <span className="text-xs text-gray-400">({stageTasks.length})</span>
 
                   {/* ⋮ menu */}
-                  <div className="relative mr-1">
+                  <div className="relative mr-1" onClick={e => e.stopPropagation()}>
                     <button
                       onClick={e => { e.stopPropagation(); setStageMenu(stageMenu === stage.id ? null : stage.id); }}
                       className="opacity-0 group-hover/stage:opacity-100 text-gray-400 hover:text-gray-600 px-1 text-base leading-none"
@@ -1034,12 +1042,6 @@ export default function ProjectPage() {
                     )}
                   </div>
 
-                  <span
-                    className="text-xs text-gray-400 mr-auto cursor-pointer"
-                    onClick={() => setCollapsed(p => ({ ...p, [stage.id]: !p[stage.id] }))}
-                  >
-                    {isCollapsed ? "◀" : "▼"}
-                  </span>
                 </div>
 
                 {!isCollapsed && (
