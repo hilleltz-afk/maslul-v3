@@ -16,23 +16,63 @@ const PIE_COLORS = ["#011e41","#2980b9","#27ae60","#e67e22","#c0392b","#9b59b6",
 function PieChart({ slices }: { slices: { label: string; value: number; color: string }[] }) {
   const total = slices.reduce((s, d) => s + d.value, 0);
   if (total === 0) return null;
-  const cx = 80, cy = 80, r = 68;
+
+  const cx = 160, cy = 160, r = 110, labelR = 138;
   let angle = -Math.PI / 2;
-  const paths = slices.map(d => {
+
+  const segments = slices.map(d => {
     const a = (d.value / total) * 2 * Math.PI;
+    const midAngle = angle + a / 2;
     const x1 = cx + r * Math.cos(angle);
     const y1 = cy + r * Math.sin(angle);
     angle += a;
     const x2 = cx + r * Math.cos(angle);
     const y2 = cy + r * Math.sin(angle);
-    return { ...d, path: `M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${a > Math.PI ? 1 : 0},1 ${x2},${y2} Z` };
+    // label anchor point
+    const lx = cx + labelR * Math.cos(midAngle);
+    const ly = cy + labelR * Math.sin(midAngle);
+    // line elbow
+    const ex = cx + (r + 18) * Math.cos(midAngle);
+    const ey = cy + (r + 18) * Math.sin(midAngle);
+    // text end
+    const isRight = Math.cos(midAngle) >= 0;
+    const tx = cx + (labelR + 20) * Math.cos(midAngle);
+    const ty = cy + (labelR + 20) * Math.sin(midAngle);
+    const pct = Math.round((d.value / total) * 100);
+    return { ...d, path: `M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${a > Math.PI ? 1 : 0},1 ${x2},${y2} Z`, lx, ly, ex, ey, tx, ty, isRight, pct, a };
   });
+
   return (
-    <svg width={160} height={160} viewBox="0 0 160 160">
-      {paths.map((s, i) => (
-        <path key={i} d={s.path} fill={s.color} stroke="white" strokeWidth={1.5}>
-          <title>{s.label}: {Math.round((s.value / total) * 100)}%</title>
+    <svg width={320} height={320} viewBox="0 0 320 320" style={{ overflow: "visible" }}>
+      {/* Slices */}
+      {segments.map((s, i) => (
+        <path key={i} d={s.path} fill={s.color} stroke="white" strokeWidth={2}>
+          <title>{s.label}: {s.pct}%</title>
         </path>
+      ))}
+      {/* Labels — only for slices ≥ 5% */}
+      {segments.filter(s => s.pct >= 5).map((s, i) => (
+        <g key={i}>
+          <line x1={s.lx} y1={s.ly} x2={s.ex} y2={s.ey} stroke="#9ca3af" strokeWidth={1} />
+          <line x1={s.ex} y1={s.ey} x2={s.tx} y2={s.ey} stroke="#9ca3af" strokeWidth={1} />
+          <text
+            x={s.tx + (s.isRight ? 4 : -4)}
+            y={s.ey - 5}
+            textAnchor={s.isRight ? "start" : "end"}
+            fontSize={11}
+            fill="#374151"
+            fontFamily="inherit"
+          >{s.label}</text>
+          <text
+            x={s.tx + (s.isRight ? 4 : -4)}
+            y={s.ey + 8}
+            textAnchor={s.isRight ? "start" : "end"}
+            fontSize={11}
+            fill={s.color}
+            fontWeight={600}
+            fontFamily="inherit"
+          >{s.pct}%</text>
+        </g>
       ))}
     </svg>
   );
@@ -285,23 +325,10 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Pie + legend side by side */}
+              {/* Pie chart */}
               {pieSlices.length > 0 && (
-                <div className="flex gap-6 items-center mb-5 flex-wrap">
+                <div className="flex justify-center mb-5" style={{ overflow: "visible" }}>
                   <PieChart slices={pieSlices} />
-                  <div className="flex flex-col gap-1.5">
-                    {pieSlices.map(s => {
-                      const pct = Math.round((s.value / pieSlices.reduce((a, b) => a + b.value, 0)) * 100);
-                      return (
-                        <div key={s.label} className="flex items-center gap-2 text-xs text-gray-600">
-                          <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: s.color }} />
-                          <span className="min-w-16">{s.label}</span>
-                          <span className="text-gray-400">{fmt(s.value)}</span>
-                          <span className="font-medium" style={{ color: s.color }}>{pct}%</span>
-                        </div>
-                      );
-                    })}
-                  </div>
                 </div>
               )}
 
