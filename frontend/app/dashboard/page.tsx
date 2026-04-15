@@ -43,7 +43,7 @@ function PieChart({ slices }: { slices: { label: string; value: number; color: s
   });
 
   return (
-    <svg width={320} height={320} viewBox="0 0 320 320" style={{ overflow: "visible" }}>
+    <svg width={480} height={380} viewBox="-80 -50 480 380" style={{ overflow: "visible", display: "block", margin: "0 auto" }}>
       {/* Slices */}
       {segments.map((s, i) => (
         <path key={i} d={s.path} fill={s.color} stroke="white" strokeWidth={2}>
@@ -56,20 +56,20 @@ function PieChart({ slices }: { slices: { label: string; value: number; color: s
           <line x1={s.lx} y1={s.ly} x2={s.ex} y2={s.ey} stroke="#9ca3af" strokeWidth={1} />
           <line x1={s.ex} y1={s.ey} x2={s.tx} y2={s.ey} stroke="#9ca3af" strokeWidth={1} />
           <text
-            x={s.tx + (s.isRight ? 4 : -4)}
-            y={s.ey - 5}
+            x={s.tx + (s.isRight ? 5 : -5)}
+            y={s.ey - 4}
             textAnchor={s.isRight ? "start" : "end"}
-            fontSize={11}
+            fontSize={12}
             fill="#374151"
             fontFamily="inherit"
           >{s.label}</text>
           <text
-            x={s.tx + (s.isRight ? 4 : -4)}
-            y={s.ey + 8}
+            x={s.tx + (s.isRight ? 5 : -5)}
+            y={s.ey + 10}
             textAnchor={s.isRight ? "start" : "end"}
-            fontSize={11}
+            fontSize={12}
             fill={s.color}
-            fontWeight={600}
+            fontWeight={700}
             fontFamily="inherit"
           >{s.pct}%</text>
         </g>
