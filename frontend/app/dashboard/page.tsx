@@ -270,41 +270,44 @@ export default function DashboardPage() {
             </a>
           </div>
 
-          {/* Task progress pie chart */}
-          {total > 0 && (() => {
-            const delayed = filteredTasks.filter(t => t.status === "delayed").length;
-            const rejected = filteredTasks.filter(t => t.status === "rejected").length;
-            const partial = filteredTasks.filter(t => t.status === "partial").length;
-            const other = Math.max(0, total - done - inProgress - delayed - rejected - partial);
-            const taskSlices = [
-              { label: "הושלם", value: done, color: "#27ae60" },
-              { label: "בעבודה", value: inProgress, color: "#2980b9" },
-              { label: "בעיכוב", value: delayed, color: "#e67e22" },
-              { label: "נדחה", value: rejected, color: "#c0392b" },
-              { label: "בוצע חלקית", value: partial, color: "#8e44ad" },
-              { label: "אחר", value: other, color: "#95a5a6" },
-            ].filter(s => s.value > 0);
-            const donePct = Math.round((done / total) * 100);
-            return (
-              <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 mb-6">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-semibold" style={{ color: "#011e41" }}>התקדמות משימות</span>
-                  <span className="text-sm font-bold" style={{ color: "#27ae60" }}>{donePct}% הושלמו</span>
-                </div>
-                <div className="flex justify-center">
-                  <PieChart slices={taskSlices} />
-                </div>
-              </div>
-            );
-          })()}
+          {/* Two pie charts side by side */}
+          <div className="flex gap-4 mb-6 flex-wrap">
 
-          {/* Budget pie + bars */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 mb-6">
+            {/* Task progress pie */}
+            {total > 0 && (() => {
+              const delayed = filteredTasks.filter(t => t.status === "delayed").length;
+              const rejected = filteredTasks.filter(t => t.status === "rejected").length;
+              const partial = filteredTasks.filter(t => t.status === "partial").length;
+              const other = Math.max(0, total - done - inProgress - delayed - rejected - partial);
+              const taskSlices = [
+                { label: "הושלם", value: done, color: "#27ae60" },
+                { label: "בעבודה", value: inProgress, color: "#2980b9" },
+                { label: "בעיכוב", value: delayed, color: "#e67e22" },
+                { label: "נדחה", value: rejected, color: "#c0392b" },
+                { label: "בוצע חלקית", value: partial, color: "#8e44ad" },
+                { label: "אחר", value: other, color: "#95a5a6" },
+              ].filter(s => s.value > 0);
+              const donePct = Math.round((done / total) * 100);
+              return (
+                <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold" style={{ color: "#011e41" }}>התקדמות משימות</span>
+                    <span className="text-sm font-bold" style={{ color: "#27ae60" }}>{donePct}% הושלמו</span>
+                  </div>
+                  <div className="flex justify-center">
+                    <PieChart slices={taskSlices} />
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Budget pie */}
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex-1 min-w-0">
               <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                 <span className="text-sm font-semibold" style={{ color: "#011e41" }}>תקציב לפי קטגוריה</span>
-                  {pieSlices.length > 0 && !hasPieActual && (
-                    <span className="text-xs text-gray-400 font-normal">(מתוכנן)</span>
-                  )}
+                {pieSlices.length > 0 && !hasPieActual && (
+                  <span className="text-xs text-gray-400 font-normal">(מתוכנן)</span>
+                )}
                 <div className="flex gap-4 text-xs text-gray-500">
                   <span className="flex items-center gap-1">
                     <span className="w-3 h-2 rounded-sm inline-block" style={{ background: "#dbeafe" }} />
@@ -317,14 +320,12 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Pie chart */}
               {pieSlices.length > 0 && (
                 <div className="flex justify-center mb-5" style={{ overflow: "visible" }}>
                   <PieChart slices={pieSlices} />
                 </div>
               )}
 
-              {/* Usage bar */}
               {totalPlanned > 0 && (
                 <div className="mb-4">
                   <div className="flex justify-between text-xs text-gray-400 mb-1">
@@ -345,7 +346,6 @@ export default function DashboardPage() {
                 </div>
               )}
 
-              {/* Per-category bars */}
               {catEntries.length > 0 && (
                 <div className="space-y-2.5 mt-3">
                   {catEntries.slice(0, 6).map(([cat, vals]) => (
@@ -355,14 +355,8 @@ export default function DashboardPage() {
                         <span>{fmt(vals.actual)} / {fmt(vals.planned)}</span>
                       </div>
                       <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden relative">
-                        <div
-                          className="absolute h-full rounded-full"
-                          style={{ width: `${(vals.planned / maxCatVal) * 100}%`, background: "#dbeafe" }}
-                        />
-                        <div
-                          className="absolute h-full rounded-full"
-                          style={{ width: `${(vals.actual / maxCatVal) * 100}%`, background: "#27ae60" }}
-                        />
+                        <div className="absolute h-full rounded-full" style={{ width: `${(vals.planned / maxCatVal) * 100}%`, background: "#dbeafe" }} />
+                        <div className="absolute h-full rounded-full" style={{ width: `${(vals.actual / maxCatVal) * 100}%`, background: "#27ae60" }} />
                       </div>
                     </div>
                   ))}
@@ -375,6 +369,7 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
+          </div>
 
           {/* Overdue tasks */}
           {overdueList.length > 0 && (
