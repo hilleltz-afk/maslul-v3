@@ -102,49 +102,67 @@ export default function ProjectPage() {
     start_date?: { from?: string; to?: string };
     end_date?: { from?: string; to?: string };
   };
-  const [colFilters, setColFilters] = useState<ColFilters>({});
+  // stageFilters: per-stage filter state
+  const [stageFilters, setStageFilters] = useState<Record<string, ColFilters>>({});
   const [openFilterCol, setOpenFilterCol] = useState<{ stageId: string; col: string } | null>(null);
 
-  function isFilterActive(col: string): boolean {
-    const f = colFilters[col as keyof ColFilters];
+  function getStageFilter(stageId: string): ColFilters {
+    return stageFilters[stageId] || {};
+  }
+
+  function isFilterActive(stageId: string, col: string): boolean {
+    const f = getStageFilter(stageId)[col as keyof ColFilters];
     if (!f) return false;
     if (Array.isArray(f)) return f.length > 0;
     return !!(f.from || f.to);
   }
 
-  function applyColFilters(list: Task[]): Task[] {
+  function stageHasAnyFilter(stageId: string): boolean {
+    const sf = getStageFilter(stageId);
+    return Object.values(sf).some(v => Array.isArray(v) ? v.length > 0 : !!(v as any)?.from || !!(v as any)?.to);
+  }
+
+  function applyColFilters(stageId: string, list: Task[]): Task[] {
+    const cf = getStageFilter(stageId);
     return list.filter(t => {
-      if (colFilters.status?.length && !colFilters.status.includes(t.status)) return false;
-      if (colFilters.priority?.length && !colFilters.priority.includes(t.priority)) return false;
-      if (colFilters.assignee?.length && !colFilters.assignee.includes(t.assignee_id || "")) return false;
-      if (colFilters.start_date?.from && (!t.start_date || t.start_date.slice(0,10) < colFilters.start_date.from)) return false;
-      if (colFilters.start_date?.to && (!t.start_date || t.start_date.slice(0,10) > colFilters.start_date.to)) return false;
-      if (colFilters.end_date?.from && (!t.end_date || t.end_date.slice(0,10) < colFilters.end_date.from)) return false;
-      if (colFilters.end_date?.to && (!t.end_date || t.end_date.slice(0,10) > colFilters.end_date.to)) return false;
+      if (cf.status?.length && !cf.status.includes(t.status)) return false;
+      if (cf.priority?.length && !cf.priority.includes(t.priority)) return false;
+      if (cf.assignee?.length && !cf.assignee.includes(t.assignee_id || "")) return false;
+      if (cf.start_date?.from && (!t.start_date || t.start_date.slice(0,10) < cf.start_date.from)) return false;
+      if (cf.start_date?.to && (!t.start_date || t.start_date.slice(0,10) > cf.start_date.to)) return false;
+      if (cf.end_date?.from && (!t.end_date || t.end_date.slice(0,10) < cf.end_date.from)) return false;
+      if (cf.end_date?.to && (!t.end_date || t.end_date.slice(0,10) > cf.end_date.to)) return false;
       return true;
     });
   }
 
-  function toggleMultiFilter(col: "status" | "priority" | "assignee", val: string) {
-    setColFilters(prev => {
-      const cur: string[] = (prev[col] as string[]) || [];
+  function toggleMultiFilter(stageId: string, col: "status" | "priority" | "assignee", val: string) {
+    setStageFilters(prev => {
+      const sf = prev[stageId] || {};
+      const cur: string[] = (sf[col] as string[]) || [];
       const next = cur.includes(val) ? cur.filter(v => v !== val) : [...cur, val];
-      return { ...prev, [col]: next };
+      return { ...prev, [stageId]: { ...sf, [col]: next } };
     });
   }
 
-  function setDateFilter(col: "start_date" | "end_date", field: "from" | "to", val: string) {
-    setColFilters(prev => ({
-      ...prev,
-      [col]: { ...(prev[col] as object || {}), [field]: val },
-    }));
+  function setDateFilter(stageId: string, col: "start_date" | "end_date", field: "from" | "to", val: string) {
+    setStageFilters(prev => {
+      const sf = prev[stageId] || {};
+      return { ...prev, [stageId]: { ...sf, [col]: { ...(sf[col] as object || {}), [field]: val } } };
+    });
   }
 
-  function clearFilter(col: string) {
-    setColFilters(prev => { const n = { ...prev }; delete n[col as keyof ColFilters]; return n; });
+  function clearFilter(stageId: string, col: string) {
+    setStageFilters(prev => {
+      const sf = { ...(prev[stageId] || {}) };
+      delete sf[col as keyof ColFilters];
+      return { ...prev, [stageId]: sf };
+    });
   }
 
-  const hasAnyFilter = Object.values(colFilters).some(v => Array.isArray(v) ? v.length > 0 : !!(v as any)?.from || !!(v as any)?.to);
+  function clearAllFilters(stageId: string) {
+    setStageFilters(prev => { const n = { ...prev }; delete n[stageId]; return n; });
+  }
 
   // Stage editing
   const [editingStageId, setEditingStageId] = useState<string | null>(null);
@@ -1004,20 +1022,8 @@ export default function ProjectPage() {
               </button>
             </div>
           )}
-          {hasAnyFilter && (
-            <div className="flex items-center gap-2 mb-3 px-1">
-              <span className="text-xs text-blue-600 font-medium">פילטרים פעילים:</span>
-              {(Object.keys(colFilters) as (keyof ColFilters)[]).map(col => (
-                <button key={col} onClick={() => clearFilter(col)}
-                  className="text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2.5 py-0.5 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors">
-                  {col === "status" ? "סטטוס" : col === "priority" ? "עדיפות" : col === "assignee" ? "אחראי" : col === "start_date" ? "התחלה" : "סיום"} ✕
-                </button>
-              ))}
-              <button onClick={() => setColFilters({})} className="text-xs text-gray-400 hover:text-red-500 mr-1">נקה הכל</button>
-            </div>
-          )}
           {stages.map((stage) => {
-            const stageTasks = applyColFilters(tasks.filter(t => t.stage_id === stage.id));
+            const stageTasks = applyColFilters(stage.id, tasks.filter(t => t.stage_id === stage.id));
             const isCollapsed = collapsed[stage.id];
             return (
               <div
@@ -1068,6 +1074,12 @@ export default function ProjectPage() {
                     >{stage.name}</span>
                   )}
                   <span className="text-xs text-gray-400">({stageTasks.length})</span>
+                  {stageHasAnyFilter(stage.id) && (
+                    <button
+                      onClick={e => { e.stopPropagation(); clearAllFilters(stage.id); }}
+                      className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors"
+                    >פילטר פעיל ✕</button>
+                  )}
 
                   {/* ⋮ menu */}
                   <div className="relative mr-1" onClick={e => e.stopPropagation()}>
@@ -1114,8 +1126,9 @@ export default function ProjectPage() {
                       <div style={{ width: 32, minWidth: 32 }} />
                       {columns.map((col) => {
                         const filterable = ["status","priority","assignee","start_date","end_date"].includes(col.key);
-                        const active = isFilterActive(col.key);
+                        const active = isFilterActive(stage.id, col.key);
                         const isOpen = openFilterCol?.stageId === stage.id && openFilterCol?.col === col.key;
+                        const sf = getStageFilter(stage.id);
                         const STATUS_OPTS = [
                           { value: "in_progress", label: "בעבודה" },
                           { value: "done", label: "בוצע" },
@@ -1157,58 +1170,55 @@ export default function ProjectPage() {
                                       {STATUS_OPTS.map(o => (
                                         <label key={o.value} className="flex items-center gap-2 cursor-pointer text-xs text-gray-700 hover:text-gray-900">
                                           <input type="checkbox" className="accent-blue-600"
-                                            checked={!!(colFilters.status?.includes(o.value))}
-                                            onChange={() => toggleMultiFilter("status", o.value)} />
+                                            checked={!!(sf.status?.includes(o.value))}
+                                            onChange={() => toggleMultiFilter(stage.id, "status", o.value)} />
                                           {o.label}
                                         </label>
                                       ))}
-                                      {colFilters.status?.length ? <button onClick={() => clearFilter("status")} className="text-xs text-red-400 mt-1 text-right">נקה</button> : null}
+                                      {sf.status?.length ? <button onClick={() => clearFilter(stage.id, "status")} className="text-xs text-red-400 mt-1 text-right">נקה</button> : null}
                                     </div>
                                   )}
-                                  {/* Priority */}
                                   {col.key === "priority" && (
                                     <div className="flex flex-col gap-1.5">
                                       <div className="text-xs font-semibold text-gray-500 mb-1">סנן לפי עדיפות</div>
                                       {PRIO_OPTS.map(o => (
                                         <label key={o.value} className="flex items-center gap-2 cursor-pointer text-xs text-gray-700 hover:text-gray-900">
                                           <input type="checkbox" className="accent-blue-600"
-                                            checked={!!(colFilters.priority?.includes(o.value))}
-                                            onChange={() => toggleMultiFilter("priority", o.value)} />
+                                            checked={!!(sf.priority?.includes(o.value))}
+                                            onChange={() => toggleMultiFilter(stage.id, "priority", o.value)} />
                                           {o.label}
                                         </label>
                                       ))}
-                                      {colFilters.priority?.length ? <button onClick={() => clearFilter("priority")} className="text-xs text-red-400 mt-1 text-right">נקה</button> : null}
+                                      {sf.priority?.length ? <button onClick={() => clearFilter(stage.id, "priority")} className="text-xs text-red-400 mt-1 text-right">נקה</button> : null}
                                     </div>
                                   )}
-                                  {/* Assignee */}
                                   {col.key === "assignee" && (
                                     <div className="flex flex-col gap-1.5">
                                       <div className="text-xs font-semibold text-gray-500 mb-1">סנן לפי אחראי</div>
                                       {users.map(u => (
                                         <label key={u.id} className="flex items-center gap-2 cursor-pointer text-xs text-gray-700 hover:text-gray-900">
                                           <input type="checkbox" className="accent-blue-600"
-                                            checked={!!(colFilters.assignee?.includes(u.id))}
-                                            onChange={() => toggleMultiFilter("assignee", u.id)} />
+                                            checked={!!(sf.assignee?.includes(u.id))}
+                                            onChange={() => toggleMultiFilter(stage.id, "assignee", u.id)} />
                                           {u.name}
                                         </label>
                                       ))}
-                                      {colFilters.assignee?.length ? <button onClick={() => clearFilter("assignee")} className="text-xs text-red-400 mt-1 text-right">נקה</button> : null}
+                                      {sf.assignee?.length ? <button onClick={() => clearFilter(stage.id, "assignee")} className="text-xs text-red-400 mt-1 text-right">נקה</button> : null}
                                     </div>
                                   )}
-                                  {/* Date range */}
                                   {(col.key === "start_date" || col.key === "end_date") && (() => {
                                     const fKey = col.key as "start_date" | "end_date";
-                                    const cur = colFilters[fKey] || {};
+                                    const cur = sf[fKey] || {};
                                     return (
                                       <div className="flex flex-col gap-2">
                                         <div className="text-xs font-semibold text-gray-500 mb-1">סנן לפי תאריך</div>
                                         <label className="text-xs text-gray-500">מ-</label>
                                         <input type="date" className="border border-gray-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-blue-300"
-                                          value={cur.from || ""} onChange={e => setDateFilter(fKey, "from", e.target.value)} />
+                                          value={cur.from || ""} onChange={e => setDateFilter(stage.id, fKey, "from", e.target.value)} />
                                         <label className="text-xs text-gray-500">עד-</label>
                                         <input type="date" className="border border-gray-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-blue-300"
-                                          value={cur.to || ""} onChange={e => setDateFilter(fKey, "to", e.target.value)} />
-                                        {(cur.from || cur.to) ? <button onClick={() => clearFilter(fKey)} className="text-xs text-red-400 text-right">נקה</button> : null}
+                                          value={cur.to || ""} onChange={e => setDateFilter(stage.id, fKey, "to", e.target.value)} />
+                                        {(cur.from || cur.to) ? <button onClick={() => clearFilter(stage.id, fKey)} className="text-xs text-red-400 text-right">נקה</button> : null}
                                       </div>
                                     );
                                   })()}
