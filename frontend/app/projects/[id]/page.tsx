@@ -103,7 +103,7 @@ export default function ProjectPage() {
     end_date?: { from?: string; to?: string };
   };
   const [colFilters, setColFilters] = useState<ColFilters>({});
-  const [openFilterCol, setOpenFilterCol] = useState<string | null>(null);
+  const [openFilterCol, setOpenFilterCol] = useState<{ stageId: string; col: string } | null>(null);
 
   function isFilterActive(col: string): boolean {
     const f = colFilters[col as keyof ColFilters];
@@ -1115,7 +1115,7 @@ export default function ProjectPage() {
                       {columns.map((col) => {
                         const filterable = ["status","priority","assignee","start_date","end_date"].includes(col.key);
                         const active = isFilterActive(col.key);
-                        const isOpen = openFilterCol === col.key;
+                        const isOpen = openFilterCol?.stageId === stage.id && openFilterCol?.col === col.key;
                         const STATUS_OPTS = [
                           { value: "in_progress", label: "בעבודה" },
                           { value: "done", label: "בוצע" },
@@ -1134,16 +1134,21 @@ export default function ProjectPage() {
                             <span className="flex-1">{col.label}</span>
                             {filterable && (
                               <button
-                                onClick={e => { e.stopPropagation(); setOpenFilterCol(isOpen ? null : col.key); }}
-                                className="ml-1 rounded px-0.5 transition-colors"
-                                style={{ color: active ? "#2980b9" : "#c0c0c0", fontSize: 11 }}
+                                onClick={e => { e.stopPropagation(); setOpenFilterCol(isOpen ? null : { stageId: stage.id, col: col.key }); }}
+                                className="ml-1 rounded p-0.5 transition-colors flex items-center"
+                                style={{ color: active ? "#2980b9" : "#bbb" }}
                                 title="סנן"
-                              >▾</button>
+                              >
+                                <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+                                  <path d="M1 2.5A.5.5 0 0 1 1.5 2h13a.5.5 0 0 1 .354.854L10 8.207V14.5a.5.5 0 0 1-.777.416l-3-2A.5.5 0 0 1 6 12.5V8.207L1.146 2.854A.5.5 0 0 1 1 2.5z"/>
+                                </svg>
+                              </button>
                             )}
                             {/* Filter dropdown */}
                             {isOpen && (
                               <>
                                 <div style={{ position: "fixed", inset: 0, zIndex: 9998 }} onMouseDown={() => setOpenFilterCol(null)} />
+
                                 <div style={{ position: "absolute", top: "100%", right: 0, zIndex: 9999, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", padding: 12, minWidth: 180, direction: "rtl" }}>
                                   {/* Status */}
                                   {col.key === "status" && (
