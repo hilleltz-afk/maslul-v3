@@ -94,6 +94,58 @@ export default function ProjectPage() {
   // Task detail panel
   const [taskPanel, setTaskPanel] = useState<string | null>(null);
 
+  // Column filters
+  type ColFilters = {
+    status?: string[];
+    priority?: string[];
+    assignee?: string[];
+    start_date?: { from?: string; to?: string };
+    end_date?: { from?: string; to?: string };
+  };
+  const [colFilters, setColFilters] = useState<ColFilters>({});
+  const [openFilterCol, setOpenFilterCol] = useState<string | null>(null);
+
+  function isFilterActive(col: string): boolean {
+    const f = colFilters[col as keyof ColFilters];
+    if (!f) return false;
+    if (Array.isArray(f)) return f.length > 0;
+    return !!(f.from || f.to);
+  }
+
+  function applyColFilters(list: Task[]): Task[] {
+    return list.filter(t => {
+      if (colFilters.status?.length && !colFilters.status.includes(t.status)) return false;
+      if (colFilters.priority?.length && !colFilters.priority.includes(t.priority)) return false;
+      if (colFilters.assignee?.length && !colFilters.assignee.includes(t.assignee_id || "")) return false;
+      if (colFilters.start_date?.from && (!t.start_date || t.start_date.slice(0,10) < colFilters.start_date.from)) return false;
+      if (colFilters.start_date?.to && (!t.start_date || t.start_date.slice(0,10) > colFilters.start_date.to)) return false;
+      if (colFilters.end_date?.from && (!t.end_date || t.end_date.slice(0,10) < colFilters.end_date.from)) return false;
+      if (colFilters.end_date?.to && (!t.end_date || t.end_date.slice(0,10) > colFilters.end_date.to)) return false;
+      return true;
+    });
+  }
+
+  function toggleMultiFilter(col: "status" | "priority" | "assignee", val: string) {
+    setColFilters(prev => {
+      const cur: string[] = (prev[col] as string[]) || [];
+      const next = cur.includes(val) ? cur.filter(v => v !== val) : [...cur, val];
+      return { ...prev, [col]: next };
+    });
+  }
+
+  function setDateFilter(col: "start_date" | "end_date", field: "from" | "to", val: string) {
+    setColFilters(prev => ({
+      ...prev,
+      [col]: { ...(prev[col] as object || {}), [field]: val },
+    }));
+  }
+
+  function clearFilter(col: string) {
+    setColFilters(prev => { const n = { ...prev }; delete n[col as keyof ColFilters]; return n; });
+  }
+
+  const hasAnyFilter = Object.values(colFilters).some(v => Array.isArray(v) ? v.length > 0 : !!(v as any)?.from || !!(v as any)?.to);
+
   // Stage editing
   const [editingStageId, setEditingStageId] = useState<string | null>(null);
   const [editingStageName, setEditingStageName] = useState("");
@@ -952,8 +1004,20 @@ export default function ProjectPage() {
               </button>
             </div>
           )}
+          {hasAnyFilter && (
+            <div className="flex items-center gap-2 mb-3 px-1">
+              <span className="text-xs text-blue-600 font-medium">פילטרים פעילים:</span>
+              {(Object.keys(colFilters) as (keyof ColFilters)[]).map(col => (
+                <button key={col} onClick={() => clearFilter(col)}
+                  className="text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2.5 py-0.5 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors">
+                  {col === "status" ? "סטטוס" : col === "priority" ? "עדיפות" : col === "assignee" ? "אחראי" : col === "start_date" ? "התחלה" : "סיום"} ✕
+                </button>
+              ))}
+              <button onClick={() => setColFilters({})} className="text-xs text-gray-400 hover:text-red-500 mr-1">נקה הכל</button>
+            </div>
+          )}
           {stages.map((stage) => {
-            const stageTasks = tasks.filter(t => t.stage_id === stage.id);
+            const stageTasks = applyColFilters(tasks.filter(t => t.stage_id === stage.id));
             const isCollapsed = collapsed[stage.id];
             return (
               <div
@@ -1048,15 +1112,111 @@ export default function ProjectPage() {
                   <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
                     <div className="flex bg-gray-50 border-b border-gray-200 text-xs text-gray-500 font-medium select-none" style={{ minWidth: "max-content" }}>
                       <div style={{ width: 32, minWidth: 32 }} />
-                      {columns.map((col) => (
-                        <div key={col.key} className="relative flex items-center px-3 py-2 border-r border-gray-200" style={col.key === "notes" ? { minWidth: getW(col.key), flex: 1 } : { width: getW(col.key), minWidth: getW(col.key) }}>
-                          {col.label}
-                          <div
-                            className="absolute left-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-300 opacity-0 hover:opacity-100"
-                            onMouseDown={(e) => startResize(col.key, e)}
-                          />
-                        </div>
-                      ))}
+                      {columns.map((col) => {
+                        const filterable = ["status","priority","assignee","start_date","end_date"].includes(col.key);
+                        const active = isFilterActive(col.key);
+                        const isOpen = openFilterCol === col.key;
+                        const STATUS_OPTS = [
+                          { value: "in_progress", label: "בעבודה" },
+                          { value: "done", label: "בוצע" },
+                          { value: "delayed", label: "בעיכוב" },
+                          { value: "rejected", label: "נדחה" },
+                          { value: "partial", label: "בוצע חלקית" },
+                          { value: "todo", label: "לביצוע" },
+                        ];
+                        const PRIO_OPTS = [
+                          { value: "high", label: "גבוהה" },
+                          { value: "medium", label: "בינונית" },
+                          { value: "low", label: "נמוכה" },
+                        ];
+                        return (
+                          <div key={col.key} className="relative flex items-center px-3 py-2 border-r border-gray-200" style={col.key === "notes" ? { minWidth: getW(col.key), flex: 1 } : { width: getW(col.key), minWidth: getW(col.key) }}>
+                            <span className="flex-1">{col.label}</span>
+                            {filterable && (
+                              <button
+                                onClick={e => { e.stopPropagation(); setOpenFilterCol(isOpen ? null : col.key); }}
+                                className="ml-1 rounded px-0.5 transition-colors"
+                                style={{ color: active ? "#2980b9" : "#c0c0c0", fontSize: 11 }}
+                                title="סנן"
+                              >▾</button>
+                            )}
+                            {/* Filter dropdown */}
+                            {isOpen && (
+                              <>
+                                <div style={{ position: "fixed", inset: 0, zIndex: 9998 }} onMouseDown={() => setOpenFilterCol(null)} />
+                                <div style={{ position: "absolute", top: "100%", right: 0, zIndex: 9999, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", padding: 12, minWidth: 180, direction: "rtl" }}>
+                                  {/* Status */}
+                                  {col.key === "status" && (
+                                    <div className="flex flex-col gap-1.5">
+                                      <div className="text-xs font-semibold text-gray-500 mb-1">סנן לפי סטטוס</div>
+                                      {STATUS_OPTS.map(o => (
+                                        <label key={o.value} className="flex items-center gap-2 cursor-pointer text-xs text-gray-700 hover:text-gray-900">
+                                          <input type="checkbox" className="accent-blue-600"
+                                            checked={!!(colFilters.status?.includes(o.value))}
+                                            onChange={() => toggleMultiFilter("status", o.value)} />
+                                          {o.label}
+                                        </label>
+                                      ))}
+                                      {colFilters.status?.length ? <button onClick={() => clearFilter("status")} className="text-xs text-red-400 mt-1 text-right">נקה</button> : null}
+                                    </div>
+                                  )}
+                                  {/* Priority */}
+                                  {col.key === "priority" && (
+                                    <div className="flex flex-col gap-1.5">
+                                      <div className="text-xs font-semibold text-gray-500 mb-1">סנן לפי עדיפות</div>
+                                      {PRIO_OPTS.map(o => (
+                                        <label key={o.value} className="flex items-center gap-2 cursor-pointer text-xs text-gray-700 hover:text-gray-900">
+                                          <input type="checkbox" className="accent-blue-600"
+                                            checked={!!(colFilters.priority?.includes(o.value))}
+                                            onChange={() => toggleMultiFilter("priority", o.value)} />
+                                          {o.label}
+                                        </label>
+                                      ))}
+                                      {colFilters.priority?.length ? <button onClick={() => clearFilter("priority")} className="text-xs text-red-400 mt-1 text-right">נקה</button> : null}
+                                    </div>
+                                  )}
+                                  {/* Assignee */}
+                                  {col.key === "assignee" && (
+                                    <div className="flex flex-col gap-1.5">
+                                      <div className="text-xs font-semibold text-gray-500 mb-1">סנן לפי אחראי</div>
+                                      {users.map(u => (
+                                        <label key={u.id} className="flex items-center gap-2 cursor-pointer text-xs text-gray-700 hover:text-gray-900">
+                                          <input type="checkbox" className="accent-blue-600"
+                                            checked={!!(colFilters.assignee?.includes(u.id))}
+                                            onChange={() => toggleMultiFilter("assignee", u.id)} />
+                                          {u.name}
+                                        </label>
+                                      ))}
+                                      {colFilters.assignee?.length ? <button onClick={() => clearFilter("assignee")} className="text-xs text-red-400 mt-1 text-right">נקה</button> : null}
+                                    </div>
+                                  )}
+                                  {/* Date range */}
+                                  {(col.key === "start_date" || col.key === "end_date") && (() => {
+                                    const fKey = col.key as "start_date" | "end_date";
+                                    const cur = colFilters[fKey] || {};
+                                    return (
+                                      <div className="flex flex-col gap-2">
+                                        <div className="text-xs font-semibold text-gray-500 mb-1">סנן לפי תאריך</div>
+                                        <label className="text-xs text-gray-500">מ-</label>
+                                        <input type="date" className="border border-gray-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-blue-300"
+                                          value={cur.from || ""} onChange={e => setDateFilter(fKey, "from", e.target.value)} />
+                                        <label className="text-xs text-gray-500">עד-</label>
+                                        <input type="date" className="border border-gray-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-blue-300"
+                                          value={cur.to || ""} onChange={e => setDateFilter(fKey, "to", e.target.value)} />
+                                        {(cur.from || cur.to) ? <button onClick={() => clearFilter(fKey)} className="text-xs text-red-400 text-right">נקה</button> : null}
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+                              </>
+                            )}
+                            <div
+                              className="absolute left-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-300 opacity-0 hover:opacity-100"
+                              onMouseDown={(e) => startResize(col.key, e)}
+                            />
+                          </div>
+                        );
+                      })}
                       <div className="px-2 py-2 text-xs text-gray-400 w-10">💬</div>
                     </div>
 
