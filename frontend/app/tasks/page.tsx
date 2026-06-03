@@ -55,6 +55,7 @@ export default function TasksPage() {
   // Bulk selection
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkStatus, setBulkStatus] = useState("");
+  const [bulkAssignee, setBulkAssignee] = useState("");
   const [bulking, setBulking] = useState(false);
 
   // Attach doc modal
@@ -132,6 +133,22 @@ export default function TasksPage() {
       setTasks(prev => prev.map(t => selected.has(t.id) ? { ...t, status: bulkStatus } : t));
       setSelected(new Set());
       setBulkStatus("");
+    } finally {
+      setBulking(false);
+    }
+  }
+
+  async function bulkAssignTeamMember() {
+    if (!bulkAssignee || selected.size === 0) return;
+    setBulking(true);
+    const assigneeId = bulkAssignee === "unassign" ? null : bulkAssignee;
+    try {
+      await Promise.all([...selected].map(id =>
+        apiFetch(`/tenants/${TENANT_ID}/tasks/${id}`, { method: "PUT", body: JSON.stringify({ assignee_id: assigneeId }) })
+      ));
+      setTasks(prev => prev.map(t => selected.has(t.id) ? { ...t, assignee_id: assigneeId ?? undefined } : t));
+      setSelected(new Set());
+      setBulkAssignee("");
     } finally {
       setBulking(false);
     }
@@ -263,6 +280,26 @@ export default function TasksPage() {
               >
                 {bulking ? "..." : "עדכן"}
               </button>
+              <div className="w-px h-4 bg-blue-200 mx-1" />
+              <select
+                value={bulkAssignee}
+                onChange={e => setBulkAssignee(e.target.value)}
+                className="text-xs border border-blue-200 rounded px-2 py-1 bg-white"
+              >
+                <option value="">שייך לאיש צוות...</option>
+                <option value="unassign">ללא שיוך</option>
+                {users.map(u => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
+              <button
+                onClick={bulkAssignTeamMember}
+                disabled={!bulkAssignee || bulking}
+                className="text-xs px-3 py-1 rounded bg-blue-600 text-white disabled:opacity-50"
+              >
+                {bulking ? "..." : "שייך"}
+              </button>
+              <div className="w-px h-4 bg-blue-200 mx-1" />
               <button
                 onClick={bulkDelete}
                 disabled={bulking}
