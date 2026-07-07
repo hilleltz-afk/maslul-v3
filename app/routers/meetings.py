@@ -143,29 +143,42 @@ def _process_pdf_with_claude(pdf_bytes: bytes, project_name: str) -> dict:
     pdf_b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
 
     prompt = f"""אתה עוזר מנהלתי של חברת נדל"ן. קיבלת מסמך PDF של פגישה עבור הפרויקט: "{project_name}".
-חלץ ממנו סיכום פגישה מסודר.
+חלץ ממנו סיכום פגישה מסודר וקרא לפונקציה extract_meeting_summary עם הנתונים."""
 
-החזר JSON בלבד (ללא markdown, ללא ```) בפורמט הבא:
-{{
-  "title": "כותרת הפגישה",
-  "meeting_date": "תאריך בפורמט DD.MM.YYYY אם מוזכר, אחרת null",
-  "participants": ["שם1", "שם2"],
-  "overview": "סקירה כללית של הנושאים שנדונו (2-4 משפטים)",
-  "decisions": ["החלטה 1", "החלטה 2"],
-  "action_items": [
-    {{
-      "title": "תיאור המשימה",
-      "assignee": "שם האחראי אם מוזכר, אחרת null",
-      "due_date": "YYYY-MM-DD אם מוזכר, אחרת null",
-      "notes": "הערות נוספות אם יש"
-    }}
-  ]
-}}"""
+    tool_schema = {
+        "name": "extract_meeting_summary",
+        "description": "חילוץ סיכום פגישה מובנה מ-PDF",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "meeting_date": {"type": ["string", "null"], "description": "DD.MM.YYYY או null"},
+                "participants": {"type": "array", "items": {"type": "string"}},
+                "overview": {"type": "string"},
+                "decisions": {"type": "array", "items": {"type": "string"}},
+                "action_items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string"},
+                            "assignee": {"type": ["string", "null"]},
+                            "due_date": {"type": ["string", "null"], "description": "YYYY-MM-DD או null"},
+                            "notes": {"type": ["string", "null"]},
+                        },
+                        "required": ["title", "assignee", "due_date", "notes"],
+                    },
+                },
+            },
+            "required": ["title", "meeting_date", "participants", "overview", "decisions", "action_items"],
+        },
+    }
 
     message = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=2000,
-        extra_headers={"anthropic-beta": "pdfs-2024-09-25"},
+        tools=[tool_schema],
+        tool_choice={"type": "tool", "name": "extract_meeting_summary"},
         messages=[{
             "role": "user",
             "content": [
@@ -182,37 +195,11 @@ def _process_pdf_with_claude(pdf_bytes: bytes, project_name: str) -> dict:
         }],
     )
 
-    text = message.content[0].text.strip()
-    if text.startswith("```"):
-        first_newline = text.find('\n')
-        text = text[first_newline + 1:] if first_newline != -1 else text[3:]
-        if text.endswith("```"):
-            text = text[:-3].rstrip()
+    for block in message.content:
+        if block.type == "tool_use" and block.name == "extract_meeting_summary":
+            return block.input
 
-    # Fix unescaped newlines/tabs inside JSON string values
-    fixed = []
-    in_string = False
-    escape_next = False
-    for ch in text:
-        if escape_next:
-            fixed.append(ch)
-            escape_next = False
-        elif ch == '\\':
-            fixed.append(ch)
-            escape_next = True
-        elif ch == '"':
-            in_string = not in_string
-            fixed.append(ch)
-        elif in_string and ch == '\n':
-            fixed.append('\\n')
-        elif in_string and ch == '\r':
-            pass
-        elif in_string and ch == '\t':
-            fixed.append('\\t')
-        else:
-            fixed.append(ch)
-
-    return json.loads(''.join(fixed))
+    raise ValueError("Claude לא החזיר נתוני פגישה")
 
 
 @router.post("/upload-pdf", response_model=schemas.MeetingSummaryRead)
