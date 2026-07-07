@@ -171,6 +171,7 @@ export default function ProjectPage() {
   const [stageMenu, setStageMenu] = useState<string | null>(null);
   const [dragTaskListId, setDragTaskListId] = useState<string | null>(null);
   const [dragOverTaskListId, setDragOverTaskListId] = useState<string | null>(null);
+  const [dragTaskStageTarget, setDragTaskStageTarget] = useState<string | null>(null);
 
   // Budget state
   const [dragBudgetId, setDragBudgetId] = useState<string | null>(null);
@@ -519,6 +520,15 @@ export default function ProjectPage() {
       body: JSON.stringify({ handling_authority: stage.handling_authority || "—", ...data }),
     });
     setStages(prev => prev.map(s => s.id === stageId ? { ...s, ...data } : s));
+  }
+
+  async function handleTaskDropOnStage(stageId: string) {
+    if (!dragTaskListId) return;
+    const task = tasks.find(t => t.id === dragTaskListId);
+    if (!task || task.stage_id === stageId) return;
+    setDragTaskStageTarget(null);
+    setDragTaskListId(null);
+    await updateTask(dragTaskListId, { stage_id: stageId });
   }
 
   function handleStageDragOver(e: React.DragEvent, targetId: string) {
@@ -1029,10 +1039,17 @@ export default function ProjectPage() {
               <div
                 key={stage.id}
                 className="mb-6"
-                onDragOver={e => handleStageDragOver(e, stage.id)}
+                onDragOver={e => {
+                  if (dragStageId) handleStageDragOver(e, stage.id);
+                  else if (dragTaskListId) { e.preventDefault(); setDragTaskStageTarget(stage.id); }
+                }}
+                onDragLeave={e => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragTaskStageTarget(null);
+                }}
+                onDrop={() => { if (dragTaskListId) handleTaskDropOnStage(stage.id); }}
               >
                 <div
-                  className="flex items-center gap-2 mb-1 select-none group/stage cursor-pointer rounded-lg px-2 py-1 hover:bg-gray-100 transition-colors"
+                  className={`flex items-center gap-2 mb-1 select-none group/stage cursor-pointer rounded-lg px-2 py-1 transition-colors ${dragTaskStageTarget === stage.id ? "ring-2 ring-blue-400 bg-blue-50" : "hover:bg-gray-100"}`}
                   onClick={() => setCollapsed(p => ({ ...p, [stage.id]: !p[stage.id] }))}
                 >
                   {/* Collapse arrow */}
