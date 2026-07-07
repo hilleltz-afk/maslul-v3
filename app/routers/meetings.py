@@ -184,10 +184,35 @@ def _process_pdf_with_claude(pdf_bytes: bytes, project_name: str) -> dict:
 
     text = message.content[0].text.strip()
     if text.startswith("```"):
-        text = text.split("```")[1]
-        if text.startswith("json"):
-            text = text[4:]
-    return json.loads(text.strip())
+        first_newline = text.find('\n')
+        text = text[first_newline + 1:] if first_newline != -1 else text[3:]
+        if text.endswith("```"):
+            text = text[:-3].rstrip()
+
+    # Fix unescaped newlines/tabs inside JSON string values
+    fixed = []
+    in_string = False
+    escape_next = False
+    for ch in text:
+        if escape_next:
+            fixed.append(ch)
+            escape_next = False
+        elif ch == '\\':
+            fixed.append(ch)
+            escape_next = True
+        elif ch == '"':
+            in_string = not in_string
+            fixed.append(ch)
+        elif in_string and ch == '\n':
+            fixed.append('\\n')
+        elif in_string and ch == '\r':
+            pass
+        elif in_string and ch == '\t':
+            fixed.append('\\t')
+        else:
+            fixed.append(ch)
+
+    return json.loads(''.join(fixed))
 
 
 @router.post("/upload-pdf", response_model=schemas.MeetingSummaryRead)
