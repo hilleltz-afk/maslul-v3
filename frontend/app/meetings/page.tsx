@@ -401,7 +401,7 @@ export default function MeetingsPage() {
                       onClick={() => deleteMeeting(m.id)}
                       className="text-xs px-2 py-1 rounded-lg text-gray-300 hover:text-red-500"
                       title="מחק"
-                    >✕</button>
+                    >🗑️</button>
                   </div>
                 </div>
 
