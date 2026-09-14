@@ -242,18 +242,18 @@ def _parse_meeting_pdf(pdf_bytes: bytes) -> dict:
             if title in {"פירוט", "טוריפ"} or due_fixed in {"תאריך יעד", "דעי ךיראת"}:
                 continue
 
-            # Sub-section header row: only non-empty cell is the title, no date at all
-            non_empty_cells = [_cell(row, i) for i in range(len(row)) if _cell(row, i)]
-            if len(non_empty_cells) <= 1 and not _DATE_RE.search(row_text):
+            # Skip sub-section labels: only 1 of the data columns is filled
+            # (e.g. "התיבונים 22" — project name row with no assignee/date)
+            data_filled = sum(
+                1 for c in [c_title, c_due, c_assignee]
+                if c < len(row) and _cell(row, c)
+            )
+            if data_filled < 2:
                 continue
 
             # "לידיעה" → decision (informational)
-            if due_fixed == "לידיעה" or (not _DATE_RE.search(due_raw) and "לידיעה" in due_fixed):
+            if due_fixed == "לידיעה" or "לידיעה" in due_fixed:
                 result["decisions"].append(title)
-                continue
-
-            # Action item must have a date in the due column
-            if not _DATE_RE.search(due_raw):
                 continue
 
             assignee_raw = _cell(row, c_assignee)
@@ -263,7 +263,7 @@ def _parse_meeting_pdf(pdf_bytes: bytes) -> dict:
                 "title": title,
                 "assignee": fix(assignee_raw) or None,
                 "start_date": _to_iso(start_raw),
-                "due_date": _to_iso(due_raw),
+                "due_date": _to_iso(due_raw),   # None for "שוטף" or missing dates
                 "notes": None,
                 "section": "previous" if in_previous else "current",
             })
