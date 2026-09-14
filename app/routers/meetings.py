@@ -164,10 +164,11 @@ def _parse_meeting_pdf(pdf_bytes: bytes) -> dict:
             all_tables += [t for t in (page.extract_tables() or []) if t]
 
     if len(all_tables) < 2:
-        raise ValueError("מבנה PDF לא מוכר — לא נמצאו טבלאות")
+        raise ValueError(f"מבנה PDF לא מוכר — נמצאו רק {len(all_tables)} טבלאות")
 
     # Auto-detect column layout and Hebrew reversal mode
     col_map, is_reversed = _detect_col_layout(all_tables)
+    print(f"[PDF parser] tables={len(all_tables)}, col_map={col_map}, reversed={is_reversed}", flush=True)
     fix = _fix_heb if is_reversed else (lambda s: str(s).strip() if s else "")
     c_title    = col_map.get("title", 6)
     c_due      = col_map.get("due",   3)
@@ -291,6 +292,17 @@ def _parse_meeting_pdf(pdf_bytes: bytes) -> dict:
     # If nothing useful was extracted, let Claude handle it
     if not result["action_items"] and not result["decisions"]:
         raise ValueError("לא נמצאו משימות או החלטות — ייתכן מבנה שונה")
+
+    # Sanity-check: if titles look like dates or column headers → column mapping failed
+    _HEADER_WORDS = {"תאריך", "אחראי", "פירוט", "גורם מקצועי", "תאריך יעד", "תאריך רישום",
+                     "פירוט נושאים", "נושא", "משימה"}
+    bad_titles = [
+        a["title"] for a in result["action_items"]
+        if _DATE_RE.fullmatch(a["title"].strip())
+        or a["title"].strip() in _HEADER_WORDS
+    ]
+    if bad_titles:
+        raise ValueError(f"מיפוי עמודות כשל (כותרות כמשימות: {bad_titles[:2]}) — מועבר לעיבוד AI")
 
     return result
 
