@@ -576,8 +576,10 @@ class ApplyTemplateRequest(BaseModel):
 class ActionItem(BaseModel):
     title: str
     assignee: Optional[str] = None
-    due_date: Optional[str] = None   # YYYY-MM-DD
+    start_date: Optional[str] = None  # YYYY-MM-DD (תאריך רישום)
+    due_date: Optional[str] = None    # YYYY-MM-DD (תאריך יעד)
     notes: Optional[str] = None
+    section: Optional[str] = None     # "current" | "previous"
 
 
 class MeetingSummaryCreate(BaseModel):

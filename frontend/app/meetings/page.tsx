@@ -8,7 +8,7 @@ import { apiFetch, apiUpload, API_BASE } from "@/lib/api";
 
 interface Project { id: string; name: string; }
 interface Stage { id: string; name: string; project_id: string; }
-interface ActionItem { title: string; assignee?: string; due_date?: string; notes?: string; }
+interface ActionItem { title: string; assignee?: string; start_date?: string; due_date?: string; notes?: string; section?: "current" | "previous"; }
 interface Meeting {
   id: string;
   project_id: string;
@@ -26,6 +26,56 @@ interface Meeting {
 function fmtDate(s?: string) {
   if (!s) return "—";
   try { return new Date(s).toLocaleDateString("he-IL"); } catch { return s; }
+}
+
+function ActionItemsTable({ items }: { items: ActionItem[] }) {
+  const current = items.filter(a => a.section !== "previous");
+  const previous = items.filter(a => a.section === "previous");
+
+  const renderRows = (rows: ActionItem[]) =>
+    rows.map((a, i) => (
+      <tr key={i} className="border-t border-gray-50">
+        <td className="px-3 py-2 font-medium text-sm">{a.title}</td>
+        <td className="px-3 py-2 text-gray-500 text-sm whitespace-nowrap">{a.assignee || "—"}</td>
+        <td className="px-3 py-2 text-gray-400 text-xs whitespace-nowrap">{a.start_date || "—"}</td>
+        <td className="px-3 py-2 text-gray-500 text-sm whitespace-nowrap">{a.due_date || "—"}</td>
+      </tr>
+    ));
+
+  if (items.length === 0) {
+    return <p className="text-sm text-gray-400">אין משימות</p>;
+  }
+
+  const headers = (bgClass: string, textClass: string) => (
+    <tr className={`${bgClass} text-xs ${textClass}`}>
+      <th className="text-right px-3 py-2 font-medium">משימה</th>
+      <th className="text-right px-3 py-2 font-medium">אחראי</th>
+      <th className="text-right px-3 py-2 font-medium">תאריך התחלה</th>
+      <th className="text-right px-3 py-2 font-medium">תאריך יעד</th>
+    </tr>
+  );
+
+  return (
+    <div className="overflow-x-auto space-y-4">
+      {current.length > 0 && (
+        <table className="w-full text-sm">
+          <thead>{headers("bg-gray-50", "text-gray-500")}</thead>
+          <tbody>{renderRows(current)}</tbody>
+        </table>
+      )}
+      {previous.length > 0 && (
+        <div>
+          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1 px-1">
+            נושאים מדיונים קודמים
+          </div>
+          <table className="w-full text-sm opacity-75">
+            <thead>{headers("bg-amber-50", "text-amber-700")}</thead>
+            <tbody>{renderRows(previous)}</tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function MeetingsPage() {
@@ -561,31 +611,7 @@ export default function MeetingsPage() {
                           >+ הוסף משימה</button>
                         </div>
                       ) : (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="bg-gray-50 text-xs text-gray-500">
-                                <th className="text-right px-3 py-2 font-medium">משימה</th>
-                                <th className="text-right px-3 py-2 font-medium">אחראי</th>
-                                <th className="text-right px-3 py-2 font-medium">תאריך יעד</th>
-                                <th className="text-right px-3 py-2 font-medium">הערות</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {(m.action_items || []).map((a, i) => (
-                                <tr key={i} className="border-t border-gray-50">
-                                  <td className="px-3 py-2 font-medium">{a.title}</td>
-                                  <td className="px-3 py-2 text-gray-500">{a.assignee || "—"}</td>
-                                  <td className="px-3 py-2 text-gray-500">{a.due_date || "—"}</td>
-                                  <td className="px-3 py-2 text-gray-400 text-xs">{a.notes || ""}</td>
-                                </tr>
-                              ))}
-                              {(!m.action_items || m.action_items.length === 0) && (
-                                <tr><td colSpan={4} className="px-3 py-3 text-gray-400 text-center">אין משימות</td></tr>
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
+                        <ActionItemsTable items={m.action_items || []} />
                       )}
                     </div>
 
@@ -608,25 +634,42 @@ export default function MeetingsPage() {
                         </div>
                         <div className="text-xs text-gray-500 mb-1">בחר משימות ליצירה:</div>
                         <div className="space-y-1.5">
-                          {(m.action_items || []).map((a, i) => (
-                            <label key={i} className="flex items-start gap-2 cursor-pointer group">
-                              <input
-                                type="checkbox"
-                                checked={selectedItems.has(i)}
-                                onChange={() => setSelectedItems(prev => {
-                                  const next = new Set(prev);
-                                  if (next.has(i)) next.delete(i); else next.add(i);
-                                  return next;
-                                })}
-                                className="mt-0.5 accent-blue-600"
-                              />
-                              <span className="text-sm">
-                                <span className="font-medium">{a.title}</span>
-                                {a.assignee && <span className="text-gray-400 mr-2">· {a.assignee}</span>}
-                                {a.due_date && <span className="text-gray-400 mr-2">· {a.due_date}</span>}
-                              </span>
-                            </label>
-                          ))}
+                          {(() => {
+                            const items = m.action_items || [];
+                            const current = items.map((a, i) => ({ a, i })).filter(({ a }) => a.section !== "previous");
+                            const previous = items.map((a, i) => ({ a, i })).filter(({ a }) => a.section === "previous");
+                            const renderCheckbox = ({ a, i }: { a: ActionItem; i: number }) => (
+                              <label key={i} className="flex items-start gap-2 cursor-pointer group">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedItems.has(i)}
+                                  onChange={() => setSelectedItems(prev => {
+                                    const next = new Set(prev);
+                                    if (next.has(i)) next.delete(i); else next.add(i);
+                                    return next;
+                                  })}
+                                  className="mt-0.5 accent-blue-600"
+                                />
+                                <span className="text-sm">
+                                  <span className="font-medium">{a.title}</span>
+                                  {a.assignee && <span className="text-gray-400 mr-2">· {a.assignee}</span>}
+                                  {a.start_date && <span className="text-gray-300 mr-1">→ {a.start_date}</span>}
+                                  {a.due_date && <span className="text-gray-400 mr-2">{a.start_date ? "" : "· "}{a.due_date}</span>}
+                                </span>
+                              </label>
+                            );
+                            return (
+                              <>
+                                {current.map(renderCheckbox)}
+                                {previous.length > 0 && (
+                                  <>
+                                    <div className="text-xs font-semibold text-amber-600 pt-2 pb-1">נושאים מדיונים קודמים:</div>
+                                    {previous.map(renderCheckbox)}
+                                  </>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
                         <div className="flex gap-2 pt-1">
                           <button

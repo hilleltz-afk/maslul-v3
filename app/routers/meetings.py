@@ -2,8 +2,10 @@
 סיכומי פגישות — עיבוד AI, עריכה, יצירת משימות, הפקת PDF.
 """
 import base64
+import io
 import json
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -21,6 +23,204 @@ from ..deps import get_current_user_id, get_db
 router = APIRouter(prefix="/tenants/{tenant_id}/meetings", tags=["meetings"])
 
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploads")
+
+# ---------------------------------------------------------------------------
+# Hadas Capital meeting PDF parser (no AI required)
+# ---------------------------------------------------------------------------
+
+_DATE_RE = re.compile(r"\d{1,2}/\d{1,2}/\d{4}")
+_NUM_RE  = re.compile(r"\d[\d.,\-]*\d|\d")   # numbers, ranges, decimals
+
+# Column indices in pdfplumber's 15-col extraction of the action items table
+_C_ASSIGNEE = 0
+_C_DUE      = 3
+_C_TITLE    = 6
+_C_START    = 9
+
+
+def _cell(row: list, idx: int) -> str:
+    if idx < len(row) and row[idx] is not None:
+        return str(row[idx]).strip()
+    return ""
+
+
+def _fix_heb(s: str | None) -> str:
+    """Reverse RTL Hebrew text extracted in wrong order by pdfplumber.
+    Number sequences (3.5, 22-25, etc.) are preserved in their original order.
+    Multi-line cells are joined with a space.
+    """
+    if not s:
+        return ""
+    s = str(s).strip()
+    if not any("֐" <= c <= "׿" for c in s):
+        return s  # no Hebrew — dates, ASCII, etc.
+
+    result_lines = []
+    for line in s.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+
+        # Mask numbers so they survive the reversal intact
+        placeholders: dict[str, str] = {}
+        counter = [0]
+
+        def _mask(m: re.Match) -> str:
+            key = f"\x00{counter[0]}\x00"
+            placeholders[key] = m.group()
+            counter[0] += 1
+            return key
+
+        masked = _NUM_RE.sub(_mask, line)
+        # Reverse the whole line (fixes Hebrew word+char order)
+        rev = masked[::-1]
+        # Restore numbers (their keys are also reversed in the string)
+        for key, val in placeholders.items():
+            rev = rev.replace(key[::-1], val)
+        result_lines.append(rev.strip())
+
+    return " ".join(result_lines)
+
+
+def _last_date(s: str) -> str | None:
+    """Return last DD/MM/YYYY found (handles strikethrough + updated date on two lines)."""
+    dates = _DATE_RE.findall(s or "")
+    return dates[-1] if dates else None
+
+
+def _to_iso(raw: str) -> str | None:
+    d = _last_date(raw)
+    if not d:
+        return None
+    day, mo, yr = d.split("/")
+    return f"{yr}-{mo.zfill(2)}-{day.zfill(2)}"
+
+
+def _to_display(raw: str) -> str | None:
+    d = _last_date(raw)
+    if not d:
+        return None
+    day, mo, yr = d.split("/")
+    return f"{day.zfill(2)}.{mo.zfill(2)}.{yr}"
+
+
+def _parse_meeting_pdf(pdf_bytes: bytes) -> dict:
+    """Parse a Hadas Capital meeting PDF directly — no AI API call."""
+    import pdfplumber
+
+    result: dict = {
+        "title": "סיכום פגישה",
+        "meeting_date": None,
+        "participants": [],
+        "overview": "",
+        "decisions": [],
+        "action_items": [],
+    }
+
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        all_tables: list[list] = []
+        for page in pdf.pages:
+            all_tables += [t for t in (page.extract_tables() or []) if t]
+
+    if len(all_tables) < 2:
+        raise ValueError("מבנה PDF לא מוכר — לא נמצאו טבלאות")
+
+    # --- Table 0: project header + participants ---
+    header_table = all_tables[0]
+    topic = ""
+
+    for row in header_table[:4]:          # rows 0-3: project info
+        label = _fix_heb(_cell(row, 6))
+        value_raw = _cell(row, 1)
+
+        if "פרויקט" in label:
+            result["title"] = f"ישיבת תכנון — {_fix_heb(value_raw)}"
+        elif "נושא" in label:
+            topic = _fix_heb(value_raw)
+        elif "תאריך" in label and _DATE_RE.search(value_raw):
+            result["meeting_date"] = _to_display(value_raw)
+
+    # Rows 5+: participants  (row 4 is the שם/תפקיד/חברה header)
+    SKIP_LABELS = {":הצופת", ":םשר"}      # תפוצה, רשם — reversed
+    for row in header_table[5:]:
+        if _cell(row, 5) in SKIP_LABELS:
+            continue
+        name    = _fix_heb(_cell(row, 3))
+        role    = _fix_heb(_cell(row, 2))
+        company = _fix_heb(_cell(row, 0))
+        if name:
+            result["participants"].append(f"{name} — {role} ({company})")
+
+    # --- Tables 1+: action items ---
+    in_previous = False
+    SECTION_MARKER_REV = "םימדוק םינוידמ םיאשונ"   # "נושאים מדיונים קודמים" reversed
+
+    for table in all_tables[1:]:
+        for row in table:
+            if not row or not any(row):
+                continue
+
+            # Detect "נושאים מדיונים קודמים" section header (any cell)
+            row_text = " ".join(_cell(row, i) for i in range(len(row)) if _cell(row, i))
+            if SECTION_MARKER_REV in row_text:
+                in_previous = True
+                continue
+
+            due_raw   = _cell(row, _C_DUE)
+            title_raw = _cell(row, _C_TITLE)
+
+            if not title_raw:
+                continue
+
+            title = _fix_heb(title_raw)
+
+            # Skip column-header row (title is exactly "פירוט") or due is "תאריך יעד"
+            due_fixed = _fix_heb(due_raw)
+            if title == "פירוט" or due_fixed == "תאריך יעד":
+                continue
+
+            # "לידיעה" → decision (informational)
+            if due_fixed == "לידיעה" or (not _DATE_RE.search(due_raw) and "לידיעה" in due_fixed):
+                result["decisions"].append(title)
+                continue
+
+            # Action item must have a date in the due column
+            if not _DATE_RE.search(due_raw):
+                continue
+
+            assignee_raw = _cell(row, _C_ASSIGNEE)
+            start_raw    = _cell(row, _C_START)
+
+            result["action_items"].append({
+                "title": title,
+                "assignee": _fix_heb(assignee_raw) or None,
+                "start_date": _to_iso(start_raw),
+                "due_date": _to_iso(due_raw),
+                "notes": None,
+                "section": "previous" if in_previous else "current",
+            })
+
+    # --- Generate overview (no AI) ---
+    n_cur  = sum(1 for a in result["action_items"] if a["section"] == "current")
+    n_prev = sum(1 for a in result["action_items"] if a["section"] == "previous")
+    assignees = list(dict.fromkeys(
+        a["assignee"] for a in result["action_items"] if a["assignee"]
+    ))
+
+    parts = []
+    if topic:
+        parts.append(f"הפגישה עסקה ב{topic}.")
+    if result["meeting_date"]:
+        parts.append(f"התקיימה ב-{result['meeting_date']}.")
+    if n_cur:
+        parts.append(f"הוגדרו {n_cur} משימות חדשות.")
+    if n_prev:
+        parts.append(f"בנוסף, {n_prev} נושאים פתוחים מפגישות קודמות.")
+    if assignees:
+        parts.append(f"אחראים: {', '.join(assignees[:6])}.")
+    result["overview"] = " ".join(parts)
+
+    return result
 
 
 def _get_meeting_or_404(db: Session, tenant_id: UUID, meeting_id: UUID) -> models.MeetingSummary:
@@ -142,8 +342,28 @@ def _process_pdf_with_claude(pdf_bytes: bytes, project_name: str) -> dict:
     client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
     pdf_b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
 
-    prompt = f"""אתה עוזר מנהלתי של חברת נדל"ן. קיבלת מסמך PDF של פגישה עבור הפרויקט: "{project_name}".
-חלץ ממנו סיכום פגישה מסודר וקרא לפונקציה extract_meeting_summary עם הנתונים."""
+    prompt = f"""אתה עוזר מנהלתי של חברת נדל"ן. קיבלת סיכום פגישה בפורמט קבוע של Hadas Capital עבור הפרויקט: "{project_name}".
+
+מבנה המסמך:
+- כותרת עם: שם הפרויקט, נושא הדיון, תאריך פגישה, מיקום
+- טבלת משתתפים (שלושה עמודות): שם | תפקיד | חברה
+- טבלה ראשית עם העמודות: מס' | תאריך רישום | פירוט | תאריך יעד | אחראי
+- לעיתים יש חלק "נושאים מדיונים קודמים" בתחתית הטבלה
+
+כללי חילוץ:
+1. participants — כל המשתתפים בפורמט "שם — תפקיד (חברה)"
+2. overview — כתוב סקירה קצרה של 2-3 משפטים על מה שדנו בפגישה והחלטות מרכזיות. הסק זאת מתוכן הפירוטים, גם אם לא כתוב מפורשות.
+3. decisions — שורות עם "לידיעה" בעמודת אחראי (אלו עדכונים/החלטות, לא משימות)
+4. action_items — רק שורות עם תאריך יעד ואחראי אמיתי (אדריכל, קונס', מיזוג, יועץ גז, בטיחות, יזם, וכו')
+   - title: הפירוט של המשימה
+   - assignee: מה שכתוב בעמודת "אחראי"
+   - start_date: תאריך הרישום (עמודה 2) — המר DD/MM/YYYY → YYYY-MM-DD
+   - due_date: תאריך היעד (עמודה 4) — המר DD/MM/YYYY → YYYY-MM-DD
+   - section: "current" לשורות מהפגישה הנוכחית, "previous" לשורות מחלק "נושאים מדיונים קודמים"
+5. אל תכלול את שורת "מטרת הפגישה" עצמה כ-action item
+6. תאריך הפגישה — מה שמופיע בכותרת המסמך, המר ל-DD.MM.YYYY
+
+קרא לפונקציה extract_meeting_summary עם הנתונים."""
 
     tool_schema = {
         "name": "extract_meeting_summary",
@@ -163,10 +383,16 @@ def _process_pdf_with_claude(pdf_bytes: bytes, project_name: str) -> dict:
                         "properties": {
                             "title": {"type": "string"},
                             "assignee": {"type": ["string", "null"]},
-                            "due_date": {"type": ["string", "null"], "description": "YYYY-MM-DD או null"},
+                            "start_date": {"type": ["string", "null"], "description": "YYYY-MM-DD (תאריך רישום)"},
+                            "due_date": {"type": ["string", "null"], "description": "YYYY-MM-DD (תאריך יעד)"},
                             "notes": {"type": ["string", "null"]},
+                            "section": {
+                                "type": "string",
+                                "enum": ["current", "previous"],
+                                "description": "current=פגישה הנוכחית, previous=נושאים מדיונים קודמים",
+                            },
                         },
-                        "required": ["title", "assignee", "due_date", "notes"],
+                        "required": ["title", "assignee", "start_date", "due_date", "notes", "section"],
                     },
                 },
             },
@@ -226,9 +452,16 @@ async def upload_pdf_meeting(
         raise HTTPException(status_code=404, detail="פרויקט לא נמצא")
 
     try:
-        structured = _process_pdf_with_claude(pdf_bytes, project.name)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"שגיאה בניתוח PDF: {str(e)}")
+        structured = _parse_meeting_pdf(pdf_bytes)
+    except Exception as parse_err:
+        # Fallback to Claude if direct parsing fails (unexpected PDF format)
+        try:
+            structured = _process_pdf_with_claude(pdf_bytes, project.name)
+        except Exception as ai_err:
+            raise HTTPException(
+                status_code=500,
+                detail=f"שגיאה בניתוח PDF: {str(parse_err)} | AI: {str(ai_err)}",
+            )
 
     now = datetime.now(timezone.utc)
     meeting = models.MeetingSummary(
@@ -340,6 +573,13 @@ def create_tasks_from_meeting(
     now = datetime.now(timezone.utc)
     created = []
     for item in req.items:
+        start_date = None
+        if item.start_date:
+            try:
+                start_date = datetime.strptime(item.start_date, "%Y-%m-%d")
+            except ValueError:
+                pass
+
         end_date = None
         if item.due_date:
             try:
@@ -356,6 +596,7 @@ def create_tasks_from_meeting(
             description=item.notes,
             status="todo",
             priority="medium",
+            start_date=start_date,
             end_date=end_date,
             created_at=now,
             updated_at=now,
