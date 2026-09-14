@@ -113,12 +113,17 @@ def _to_display(raw: str) -> str | None:
 
 def _detect_col_layout(all_tables: list) -> tuple[dict, bool]:
     """
-    Scan action item tables to find column indices and Hebrew reversal mode.
-    Only overrides defaults when FORWARD Hebrew headers are found.
-    For reversed Hebrew (first PDF format) the known-good defaults are used.
+    Detect column layout and Hebrew reversal mode.
+
+    Strategy 1: look for forward-Hebrew header row (≥2 keyword matches).
+    Strategy 2: data-driven — find which column has the most dates (= due column),
+                then pick the column with the most unique Hebrew text (= title).
+    Default: first-PDF known-good indices (reversed Hebrew, 15-column).
+
     Returns (col_map, is_reversed).
-    col_map keys: 'title', 'due', 'assignee', 'start'
     """
+    from collections import Counter
+
     FWD_CELLS = {
         "פירוט":        "title",
         "תאריך יעד":   "due",
@@ -127,6 +132,7 @@ def _detect_col_layout(all_tables: list) -> tuple[dict, bool]:
         "תאריך רישום": "start",
     }
 
+    # ── Strategy 1: explicit forward-Hebrew column headers ──────────────────
     for table in all_tables[1:]:
         for row in table:
             if not row:
@@ -137,11 +143,48 @@ def _detect_col_layout(all_tables: list) -> tuple[dict, bool]:
                 for kw, key in FWD_CELLS.items():
                     if kw in cell and key not in fwd_map:
                         fwd_map[key] = i
-            # A genuine forward-Hebrew header has at least 2 column names
             if len(fwd_map) >= 2 and "title" in fwd_map:
                 return fwd_map, False
 
-    # Default: first-PDF known-good indices (reversed Hebrew, 15-column)
+    # ── Strategy 2: data-driven from date + text frequency ──────────────────
+    col_dates: Counter = Counter()
+    col_heb_chars: Counter = Counter()
+    max_cols = 0
+
+    for table in all_tables[1:]:
+        for row in table:
+            if not row or not any(row):
+                continue
+            for i, cell in enumerate(row):
+                if cell is None:
+                    continue
+                s = str(cell).strip()
+                if _DATE_RE.search(s):
+                    col_dates[i] += 1
+                heb_len = sum(1 for c in s if "א" <= c <= "ת")
+                if heb_len > 3:   # at least a few Hebrew letters
+                    col_heb_chars[i] += heb_len
+                max_cols = max(max_cols, i + 1)
+
+    # Only use data-driven for narrow tables (≤8 cols) — the first format has 15 cols
+    # and has two date columns (due=3, start=9) that confuse the heuristic.
+    if col_dates and sum(col_dates.values()) >= 2 and 3 <= max_cols <= 8:
+        c_due = col_dates.most_common(1)[0][0]
+        # Title = column with most Hebrew text that isn't the due column
+        heb_excl = [(c, n) for c, n in col_heb_chars.items() if c != c_due]
+        if heb_excl:
+            c_title = max(heb_excl, key=lambda x: x[1])[0]
+            # Assignee = next largest Hebrew column
+            others = [(c, n) for c, n in col_heb_chars.items()
+                      if c not in {c_due, c_title}]
+            c_assignee = max(others, key=lambda x: x[1])[0] if others else (
+                0 if c_title != 0 else 1
+            )
+            col_map = {"title": c_title, "due": c_due, "assignee": c_assignee}
+            print(f"[PDF parser] data-driven col_map={col_map}", flush=True)
+            return col_map, False   # data-driven → assume forward Hebrew
+
+    # ── Default: first-PDF known-good indices (reversed Hebrew, 15-column) ──
     return {"assignee": 0, "due": 3, "title": 6, "start": 9}, True
 
 
@@ -158,10 +201,14 @@ def _parse_meeting_pdf(pdf_bytes: bytes) -> dict:
         "action_items": [],
     }
 
+    page_texts: list[str] = []
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
         all_tables: list[list] = []
         for page in pdf.pages:
             all_tables += [t for t in (page.extract_tables() or []) if t]
+            page_texts.append(page.extract_text() or "")
+    result["_debug_pages"] = len(page_texts)
+    result["_debug_tables"] = len(all_tables)
 
     if len(all_tables) < 2:
         raise ValueError(f"מבנה PDF לא מוכר — נמצאו רק {len(all_tables)} טבלאות")
@@ -492,7 +539,7 @@ def _process_pdf_with_claude(pdf_bytes: bytes, project_name: str) -> dict:
 
     message = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=8000,
+        max_tokens=16000,
         tools=[tool_schema],
         tool_choice={"type": "tool", "name": "extract_meeting_summary"},
         messages=[{
@@ -511,8 +558,11 @@ def _process_pdf_with_claude(pdf_bytes: bytes, project_name: str) -> dict:
         }],
     )
 
+    print(f"[PDF parser] Claude stop_reason={message.stop_reason}", flush=True)
     for block in message.content:
         if block.type == "tool_use" and block.name == "extract_meeting_summary":
+            items = block.input.get("action_items", [])
+            print(f"[PDF parser] Claude extracted {len(items)} action_items", flush=True)
             return block.input
 
     raise ValueError("Claude לא החזיר נתוני פגישה")
