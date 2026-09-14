@@ -265,7 +265,8 @@ def _parse_meeting_pdf(pdf_bytes: bytes) -> dict:
     # "נושאים מדיונים קודמים" in reversed and forward Hebrew
     PREV_MARKERS = {"םימדוק םינוידמ םיאשונ", "נושאים מדיונים קודמים"}
 
-    for table in all_tables[1:]:
+    for ti, table in enumerate(all_tables[1:], 1):
+        items_before = len(result["action_items"])
         for row in table:
             if not row or not any(row):
                 continue
@@ -279,6 +280,9 @@ def _parse_meeting_pdf(pdf_bytes: bytes) -> dict:
 
             due_raw   = _cell(row, c_due)
             title_raw = _cell(row, c_title)
+            # Fallback: in some tables the title lands one column to the right
+            if not title_raw and c_title + 1 < len(row):
+                title_raw = _cell(row, c_title + 1)
 
             if not title_raw:
                 continue
@@ -315,6 +319,7 @@ def _parse_meeting_pdf(pdf_bytes: bytes) -> dict:
                 "notes": None,
                 "section": "previous" if in_previous else "current",
             })
+        print(f"[PDF parser] table[{ti}]: +{len(result['action_items'])-items_before} items", flush=True)
 
     # --- Generate overview (no AI) ---
     n_cur  = sum(1 for a in result["action_items"] if a["section"] == "current")
