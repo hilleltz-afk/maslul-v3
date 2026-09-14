@@ -28,7 +28,7 @@ UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploads")
 # Hadas Capital meeting PDF parser (no AI required)
 # ---------------------------------------------------------------------------
 
-_DATE_RE = re.compile(r"\d{1,2}/\d{1,2}/\d{4}")
+_DATE_RE = re.compile(r"\d{1,2}/\d{1,2}/\d{2,4}")
 _NUM_RE  = re.compile(r"\d[\d.,\-]*\d|\d")   # numbers, ranges, decimals
 
 # Column indices in pdfplumber's 15-col extraction of the action items table
@@ -83,9 +83,14 @@ def _fix_heb(s: str | None) -> str:
 
 
 def _last_date(s: str) -> str | None:
-    """Return last DD/MM/YYYY found (handles strikethrough + updated date on two lines)."""
+    """Return last DD/MM/YY(YY) found (handles strikethrough + updated date on two lines)."""
     dates = _DATE_RE.findall(s or "")
     return dates[-1] if dates else None
+
+
+def _expand_year(yr: str) -> str:
+    """Expand 2-digit year to 4-digit (26 → 2026)."""
+    return f"20{yr}" if len(yr) == 2 else yr
 
 
 def _to_iso(raw: str) -> str | None:
@@ -93,6 +98,7 @@ def _to_iso(raw: str) -> str | None:
     if not d:
         return None
     day, mo, yr = d.split("/")
+    yr = _expand_year(yr)
     return f"{yr}-{mo.zfill(2)}-{day.zfill(2)}"
 
 
@@ -101,7 +107,42 @@ def _to_display(raw: str) -> str | None:
     if not d:
         return None
     day, mo, yr = d.split("/")
+    yr = _expand_year(yr)
     return f"{day.zfill(2)}.{mo.zfill(2)}.{yr}"
+
+
+def _detect_col_layout(all_tables: list) -> tuple[dict, bool]:
+    """
+    Scan action item tables to find column indices and Hebrew reversal mode.
+    Only overrides defaults when FORWARD Hebrew headers are found.
+    For reversed Hebrew (first PDF format) the known-good defaults are used.
+    Returns (col_map, is_reversed).
+    col_map keys: 'title', 'due', 'assignee', 'start'
+    """
+    FWD_CELLS = {
+        "פירוט":        "title",
+        "תאריך יעד":   "due",
+        "גורם מקצועי": "assignee",
+        "אחראי":       "assignee",
+        "תאריך רישום": "start",
+    }
+
+    for table in all_tables[1:]:
+        for row in table:
+            if not row:
+                continue
+            cells = [str(c).strip() if c is not None else "" for c in row]
+            fwd_map: dict[str, int] = {}
+            for i, cell in enumerate(cells):
+                for kw, key in FWD_CELLS.items():
+                    if kw in cell and key not in fwd_map:
+                        fwd_map[key] = i
+            # A genuine forward-Hebrew header has at least 2 column names
+            if len(fwd_map) >= 2 and "title" in fwd_map:
+                return fwd_map, False
+
+    # Default: first-PDF known-good indices (reversed Hebrew, 15-column)
+    return {"assignee": 0, "due": 3, "title": 6, "start": 9}, True
 
 
 def _parse_meeting_pdf(pdf_bytes: bytes) -> dict:
@@ -125,18 +166,38 @@ def _parse_meeting_pdf(pdf_bytes: bytes) -> dict:
     if len(all_tables) < 2:
         raise ValueError("מבנה PDF לא מוכר — לא נמצאו טבלאות")
 
+    # Auto-detect column layout and Hebrew reversal mode
+    col_map, is_reversed = _detect_col_layout(all_tables)
+    fix = _fix_heb if is_reversed else (lambda s: str(s).strip() if s else "")
+    c_title    = col_map.get("title", 6)
+    c_due      = col_map.get("due",   3)
+    c_assignee = col_map.get("assignee", 0)
+    c_start    = col_map.get("start",  9)
+
     # --- Table 0: project header + participants ---
     header_table = all_tables[0]
     topic = ""
 
     for row in header_table[:4]:          # rows 0-3: project info
-        label = _fix_heb(_cell(row, 6))
+        # Labels may be at col 6 (reversed) or col 6 forward depending on format
+        label_rev = _fix_heb(_cell(row, 6))   # try reversed label at col 6
+        label_fwd = _cell(row, 6)             # raw label (forward Hebrew or other)
+        label = label_rev or label_fwd
+        # Value is at col 1 (reversed format) or any cell with a date/text
         value_raw = _cell(row, 1)
+        if not value_raw:
+            # scan all cells for a non-label value
+            for ci in range(len(row)):
+                if ci != 6:
+                    v = _cell(row, ci)
+                    if v:
+                        value_raw = v
+                        break
 
         if "פרויקט" in label:
-            result["title"] = f"ישיבת תכנון — {_fix_heb(value_raw)}"
+            result["title"] = f"ישיבת תכנון — {fix(value_raw)}"
         elif "נושא" in label:
-            topic = _fix_heb(value_raw)
+            topic = fix(value_raw)
         elif "תאריך" in label and _DATE_RE.search(value_raw):
             result["meeting_date"] = _to_display(value_raw)
 
@@ -145,38 +206,45 @@ def _parse_meeting_pdf(pdf_bytes: bytes) -> dict:
     for row in header_table[5:]:
         if _cell(row, 5) in SKIP_LABELS:
             continue
-        name    = _fix_heb(_cell(row, 3))
-        role    = _fix_heb(_cell(row, 2))
-        company = _fix_heb(_cell(row, 0))
+        name    = fix(_cell(row, 3))
+        role    = fix(_cell(row, 2))
+        company = fix(_cell(row, 0))
         if name:
             result["participants"].append(f"{name} — {role} ({company})")
 
     # --- Tables 1+: action items ---
     in_previous = False
-    SECTION_MARKER_REV = "םימדוק םינוידמ םיאשונ"   # "נושאים מדיונים קודמים" reversed
+    # "נושאים מדיונים קודמים" in reversed and forward Hebrew
+    PREV_MARKERS = {"םימדוק םינוידמ םיאשונ", "נושאים מדיונים קודמים"}
 
     for table in all_tables[1:]:
         for row in table:
             if not row or not any(row):
                 continue
 
-            # Detect "נושאים מדיונים קודמים" section header (any cell)
             row_text = " ".join(_cell(row, i) for i in range(len(row)) if _cell(row, i))
-            if SECTION_MARKER_REV in row_text:
+
+            # Detect "נושאים מדיונים קודמים" section marker
+            if any(m in row_text for m in PREV_MARKERS):
                 in_previous = True
                 continue
 
-            due_raw   = _cell(row, _C_DUE)
-            title_raw = _cell(row, _C_TITLE)
+            due_raw   = _cell(row, c_due)
+            title_raw = _cell(row, c_title)
 
             if not title_raw:
                 continue
 
-            title = _fix_heb(title_raw)
+            title = fix(title_raw)
 
-            # Skip column-header row (title is exactly "פירוט") or due is "תאריך יעד"
-            due_fixed = _fix_heb(due_raw)
-            if title == "פירוט" or due_fixed == "תאריך יעד":
+            # Skip column-header rows
+            due_fixed = fix(due_raw)
+            if title in {"פירוט", "טוריפ"} or due_fixed in {"תאריך יעד", "דעי ךיראת"}:
+                continue
+
+            # Sub-section header row: only non-empty cell is the title, no date at all
+            non_empty_cells = [_cell(row, i) for i in range(len(row)) if _cell(row, i)]
+            if len(non_empty_cells) <= 1 and not _DATE_RE.search(row_text):
                 continue
 
             # "לידיעה" → decision (informational)
@@ -188,12 +256,12 @@ def _parse_meeting_pdf(pdf_bytes: bytes) -> dict:
             if not _DATE_RE.search(due_raw):
                 continue
 
-            assignee_raw = _cell(row, _C_ASSIGNEE)
-            start_raw    = _cell(row, _C_START)
+            assignee_raw = _cell(row, c_assignee)
+            start_raw    = _cell(row, c_start) if c_start < len(row) else ""
 
             result["action_items"].append({
                 "title": title,
-                "assignee": _fix_heb(assignee_raw) or None,
+                "assignee": fix(assignee_raw) or None,
                 "start_date": _to_iso(start_raw),
                 "due_date": _to_iso(due_raw),
                 "notes": None,
@@ -219,6 +287,10 @@ def _parse_meeting_pdf(pdf_bytes: bytes) -> dict:
     if assignees:
         parts.append(f"אחראים: {', '.join(assignees[:6])}.")
     result["overview"] = " ".join(parts)
+
+    # If nothing useful was extracted, let Claude handle it
+    if not result["action_items"] and not result["decisions"]:
+        raise ValueError("לא נמצאו משימות או החלטות — ייתכן מבנה שונה")
 
     return result
 
@@ -442,6 +514,15 @@ async def upload_pdf_meeting(
     pdf_bytes = await file.read()
     if len(pdf_bytes) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="הקובץ גדול מדי (מקסימום 10MB)")
+
+    # Save copy for debugging (only if UPLOAD_DIR exists)
+    try:
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        safe_name = re.sub(r"[^\w.\-]", "_", file.filename or "meeting.pdf")
+        with open(os.path.join(UPLOAD_DIR, safe_name), "wb") as fh:
+            fh.write(pdf_bytes)
+    except Exception:
+        pass  # non-critical
 
     project = db.query(models.Project).filter(
         models.Project.id == project_id,
