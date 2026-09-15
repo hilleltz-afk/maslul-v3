@@ -384,6 +384,14 @@ def _json_load(value, default):
 
 
 def _meeting_to_schema(m: models.MeetingSummary) -> schemas.MeetingSummaryRead:
+    raw_items = _json_load(m.action_items, [])
+    safe_items = []
+    for a in raw_items:
+        try:
+            if isinstance(a, dict):
+                safe_items.append(schemas.ActionItem(**{k: v for k, v in a.items() if k in schemas.ActionItem.model_fields}))
+        except Exception:
+            pass
     return schemas.MeetingSummaryRead(
         id=m.id,
         project_id=m.project_id,
@@ -393,11 +401,11 @@ def _meeting_to_schema(m: models.MeetingSummary) -> schemas.MeetingSummaryRead:
         participants=_json_load(m.participants, []),
         overview=m.overview,
         decisions=_json_load(m.decisions, []),
-        action_items=[schemas.ActionItem(**a) for a in _json_load(m.action_items, [])],
+        action_items=safe_items,
         status=m.status,
         document_id=m.document_id,
         created_by=m.created_by,
-        created_at=m.created_at,
+        created_at=m.created_at or datetime.now(timezone.utc),
     )
 
 
@@ -418,7 +426,13 @@ def list_meetings(
     if project_id:
         q = q.filter(models.MeetingSummary.project_id == project_id)
     meetings = q.order_by(models.MeetingSummary.created_at.desc()).all()
-    return [_meeting_to_schema(m) for m in meetings]
+    result = []
+    for m in meetings:
+        try:
+            result.append(_meeting_to_schema(m))
+        except Exception as e:
+            print(f"[meetings] skipping corrupt row {m.id}: {e}", flush=True)
+    return result
 
 
 # ---------------------------------------------------------------------------
