@@ -84,6 +84,7 @@ export default function MeetingsPage() {
   const [stages, setStages] = useState<Stage[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   // Filter
   const [filterProject, setFilterProject] = useState<string>("all");
@@ -114,18 +115,23 @@ export default function MeetingsPage() {
 
   async function loadAll() {
     setLoading(true);
+    setLoadError("");
     const tid = getTenantId();
     try {
-      const [projs, mtgs, stgs] = await Promise.all([
-        apiFetch(`/tenants/${tid}/projects/`).catch(() => []),
-        apiFetch(`/tenants/${tid}/meetings/`).catch(() => []),
-        apiFetch(`/tenants/${tid}/stages/`).catch(() => []),
+      const [projs, stgs, mtgs] = await Promise.all([
+        apiFetch(`/tenants/${tid}/projects/`),
+        apiFetch(`/tenants/${tid}/stages/`),
+        apiFetch(`/tenants/${tid}/meetings/`),
       ]);
-      setProjects(projs);
-      setMeetings(mtgs);
-      setStages(stgs);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
+      setProjects(projs ?? []);
+      setStages(stgs ?? []);
+      setMeetings(mtgs ?? []);
+    } catch (e: any) {
+      console.error("[meetings] loadAll error:", e);
+      setLoadError(e?.message || "שגיאה בטעינת הנתונים");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function processNew() {
@@ -343,7 +349,14 @@ export default function MeetingsPage() {
 
         {loading && <div className="text-center py-20 text-gray-400">טוען...</div>}
 
-        {!loading && visibleMeetings.length === 0 && (
+        {!loading && loadError && (
+          <div className="text-center py-20 text-red-500 text-sm">
+            שגיאה בטעינה: {loadError}
+            <button onClick={loadAll} className="block mx-auto mt-3 text-xs underline text-gray-500">נסה שנית</button>
+          </div>
+        )}
+
+        {!loading && !loadError && visibleMeetings.length === 0 && (
           <div className="text-center py-20 text-gray-400">
             אין סיכומי פגישות עדיין — לחץ "+ פגישה חדשה"
           </div>
