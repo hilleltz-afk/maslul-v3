@@ -6,7 +6,6 @@ import json
 import logging
 import os
 import datetime
-import tempfile
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -15,7 +14,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger("backup")
 
 FOLDER_ID = os.environ.get("BACKUP_DRIVE_FOLDER_ID", "1APIXrMH1QjNsc_cwGm2KcAStSUXmOlf7")
-KEEP_LAST = 7  # number of backups to keep in Drive
+KEEP_LAST = 7
 
 
 def dump_database(database_url: str) -> str:
@@ -35,16 +34,27 @@ def dump_database(database_url: str) -> str:
         conn.close()
 
 
+def get_drive_credentials():
+    from google.oauth2.credentials import Credentials
+    from google.auth.transport.requests import Request
+
+    creds = Credentials(
+        token=None,
+        refresh_token=os.environ["GOOGLE_DRIVE_REFRESH_TOKEN"],
+        client_id=os.environ["GOOGLE_BACKUP_CLIENT_ID"],
+        client_secret=os.environ["GOOGLE_BACKUP_CLIENT_SECRET"],
+        token_uri="https://oauth2.googleapis.com/token",
+        scopes=["https://www.googleapis.com/auth/drive.file"],
+    )
+    creds.refresh(Request())
+    return creds
+
+
 def upload_to_drive(content: str, filename: str) -> str:
-    from google.oauth2 import service_account
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaInMemoryUpload
 
-    sa_json = os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"]
-    sa_info = json.loads(sa_json)
-    creds = service_account.Credentials.from_service_account_info(
-        sa_info, scopes=["https://www.googleapis.com/auth/drive"]
-    )
+    creds = get_drive_credentials()
     service = build("drive", "v3", credentials=creds, cache_discovery=False)
 
     media = MediaInMemoryUpload(content.encode("utf-8"), mimetype="application/json")
@@ -75,11 +85,10 @@ def main():
     if not database_url:
         log.error("DATABASE_URL not set — aborting")
         raise SystemExit(1)
-
-    sa_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
-    if not sa_json:
-        log.error("GOOGLE_SERVICE_ACCOUNT_JSON not set — aborting")
-        raise SystemExit(1)
+    for var in ("GOOGLE_DRIVE_REFRESH_TOKEN", "GOOGLE_BACKUP_CLIENT_ID", "GOOGLE_BACKUP_CLIENT_SECRET"):
+        if not os.environ.get(var):
+            log.error(f"{var} not set — aborting")
+            raise SystemExit(1)
 
     log.info("Starting database backup…")
     dump = dump_database(database_url)
