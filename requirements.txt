@@ -13,6 +13,7 @@ python-dotenv
 python-levenshtein
 google-auth-oauthlib
 google-auth
+google-api-python-client>=2.0.0
 python-jose[cryptography]
 psycopg2-binary>=2.9.9
 openpyxl>=3.1.0
